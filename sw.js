@@ -1,5 +1,5 @@
-const SHELL_CACHE = 'pocket-python-shell-v3';
-const RUNTIME_CACHE = 'pocket-python-runtime-v1';
+const SHELL_CACHE = 'pocket-python-shell-v4';
+const RUNTIME_CACHE = 'pocket-python-runtime-v2';
 const KEEP = [SHELL_CACHE, RUNTIME_CACHE];
 
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
@@ -14,8 +14,38 @@ const RUNTIME_HOSTS = [
   'fonts.gstatic.com'
 ];
 
+// The editor's own libraries load from <head>, before this worker controls the
+// first page view, so they never pass through the fetch handler on that visit.
+// Precaching them here is what makes offline work after one visit instead of two.
+// Pyodide itself (several MB) is deliberately left out — it is fetched on the
+// first actual Run, so opening the app never costs that download.
+const CM = 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/';
+const PRECACHE_CDN = [
+  CM + 'codemirror.min.js',
+  CM + 'mode/python/python.min.js',
+  CM + 'addon/hint/show-hint.min.js',
+  CM + 'codemirror.min.css',
+  CM + 'theme/dracula.min.css',
+  CM + 'addon/hint/show-hint.min.css',
+  'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js'
+];
+
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(SHELL_CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
+  e.waitUntil((async () => {
+    const shell = await caches.open(SHELL_CACHE);
+    await shell.addAll(SHELL).catch(() => {});
+
+    // One failing CDN asset must not fail the whole install, so cache them
+    // individually. Explicit CORS mode keeps the responses inspectable —
+    // an opaque response has status 0 and cannot be validated before caching.
+    const runtime = await caches.open(RUNTIME_CACHE);
+    await Promise.all(PRECACHE_CDN.map(async (url) => {
+      try {
+        const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+        if (res && res.ok) await runtime.put(url, res);
+      } catch (err) { /* offline at install time — fetched on demand later */ }
+    }));
+  })());
   self.skipWaiting();
 });
 
@@ -72,7 +102,9 @@ self.addEventListener('fetch', (e) => {
     caches.match(req).then((cached) => {
       if (cached) return cached;
       return fetch(req).then((res) => {
-        if (res && res.ok && res.type !== 'opaque') putCopy(target, req, res);
+        // res.ok is false for opaque responses (status 0), so this also skips
+        // anything that arrived without CORS — it could not be validated anyway.
+        if (res && res.ok) putCopy(target, req, res);
         return res;
       });
     })
