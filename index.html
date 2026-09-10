@@ -96,8 +96,23 @@
     -webkit-tap-highlight-color:transparent;
   }
   button{touch-action:manipulation; font-family:var(--font-body);}
-  /* The design system asks for a themed focus ring, never the browser default. */
-  :focus-visible{outline:2px solid var(--color-accent); outline-offset:2px;}
+  /* The design system asks for a themed focus ring, never the browser default —
+     but only on controls. A text-entry element matches :focus-visible whenever
+     it is focused, whatever the input modality, so a blanket rule drew a box
+     around the whole code area the moment the editor was tapped on iOS. */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible{outline:2px solid var(--color-accent); outline-offset:2px;}
+  /* The editor indicates focus with its caret. */
+  .CodeMirror [contenteditable]:focus,
+  .CodeMirror [contenteditable]:focus-visible,
+  .CodeMirror-code:focus,
+  .CodeMirror-code:focus-visible,
+  .CodeMirror-scroll:focus,
+  .CodeMirror textarea:focus,
+  .CodeMirror textarea:focus-visible{outline:none !important;}
   ::selection{background:var(--color-accent-900); color:var(--color-accent-200);}
   .ph, .ph-fill{line-height:1; flex-shrink:0;}
 
@@ -256,7 +271,16 @@
     background:var(--color-bg) !important;
     border-right:none !important;
   }
-  .CodeMirror-linenumber{color:var(--color-gutter) !important; padding:0 11.2px 0 16.8px;}
+  .CodeMirror-linenumber{color:var(--color-gutter) !important; padding:0 8.4px 0 5.6px;}
+  /* Lines the AI rewrote get an accent bar left of the line number. */
+  .pp-aigutter{width:12px;}
+  .pp-ai-mark{
+    width:3px;
+    margin-left:5.6px;
+    border-radius:2px;
+    background:var(--color-accent);
+    box-shadow:0 0 8px rgba(145,132,217,.55);
+  }
   /* CodeMirror only hides the gutter's selection highlight, leaving the digits
      selectable. On touch devices the editor uses a contenteditable input, where
      the browser copies straight from the DOM — so «Выделить всё» + «Скопировать»
@@ -683,6 +707,9 @@ const cm = CodeMirror.fromTextArea(editorTextarea,{
   tabSize:4,
   indentWithTabs:false,
   extraKeys:{"Ctrl-Space":"autocomplete"},
+  // Order matters: the AI-change column is listed first, so it renders to the
+  // left of the line numbers.
+  gutters:['pp-aigutter','CodeMirror-linenumbers'],
 });
 // CodeMirror 5 switches to a contenteditable input on touch devices; iOS still
 // applies autocapitalisation and smart quotes to it unless told otherwise.
@@ -739,6 +766,7 @@ fileInput.onchange = () => {
   const reader = new FileReader();
   reader.onload = () => {
     cm.setValue(reader.result);
+    clearAiMarks();
     setDirty(false);
     logLine('Файл «'+file.name+'» загружен.','line-sys','ph ph-file-py');
   };
@@ -1428,6 +1456,51 @@ runBtn.onclick = async function(){
   runBtn.disabled = false;
 };
 
+// ---------- marking what the AI rewrote ----------
+// Which lines of `next` have no counterpart in `prev`, via an LCS over whole
+// lines. Marking every line from the first difference onward would light up the
+// rest of the file after a single inserted line, which tells the reader nothing.
+function changedLineNumbers(prev, next){
+  const a = prev, b = next, n = a.length, m = b.length;
+  const LIMIT = 400;                     // beginner programs; keeps the table small
+  if(n > LIMIT || m > LIMIT){
+    const out = [];
+    for(let j = 0; j < m; j++) if(a[j] !== b[j]) out.push(j);
+    return out;
+  }
+  const dp = [];
+  for(let i = 0; i <= n; i++) dp.push(new Uint16Array(m + 1));
+  for(let i = n - 1; i >= 0; i--){
+    for(let j = m - 1; j >= 0; j--){
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1
+                               : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const marked = [];
+  let i = 0, j = 0;
+  while(i < n && j < m){
+    if(a[i] === b[j]){ i++; j++; }
+    else if(dp[i + 1][j] >= dp[i][j + 1]) i++;   // line removed
+    else marked.push(j++);                       // line added or rewritten
+  }
+  while(j < m) marked.push(j++);
+  return marked;
+}
+
+function clearAiMarks(){ cm.clearGutter('pp-aigutter'); }
+
+function markAiLines(lines){
+  clearAiMarks();
+  const h = cm.defaultTextHeight();
+  for(const line of lines){
+    const el = document.createElement('div');
+    el.className = 'pp-ai-mark';
+    el.style.height = h + 'px';
+    el.title = 'Эту строку изменил ИИ';
+    cm.setGutterMarker(line, 'pp-aigutter', el);
+  }
+}
+
 // ---------- typewriter-style code fix ----------
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
@@ -1621,6 +1694,7 @@ aiBtn.onclick = async function(){
   }
 
   aiBtn.disabled = true;
+  clearAiMarks();
   showTab('console');
   logLine('Спрашиваю ИИ…','line-sys');
   const code = cm.getValue();
@@ -1718,8 +1792,13 @@ ${lastError ? "Последняя ошибка при запуске:\n" + lastE
 
     if(parsed.fixed_code && typeof parsed.fixed_code === 'string' && parsed.fixed_code.trim() !== code.trim()){
       logLine('Переписываю код…','line-sys');
+      const before = code.split('\n');
       await animateReplace(parsed.fixed_code);
-      logLine('Код обновлён — можно запустить снова.','line-sys');
+      const touched = changedLineNumbers(before, cm.getValue().split('\n'));
+      markAiLines(touched);
+      logLine(touched.length === 1
+        ? 'Изменена 1 строка — помечена слева.'
+        : 'Изменено строк: ' + touched.length + ' — помечены слева.', 'line-sys', 'ph ph-sparkle');
     }
   }catch(e){
     logLine('Не удалось связаться с ИИ: '+e.message,'line-err');
