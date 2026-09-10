@@ -1053,12 +1053,16 @@ async function animateReplace(newFullCode){
 }
 
 // ---------- AI check + auto-fix ----------
-// The Anthropic API is called straight from the page, so it needs a key stored
-// on this device. anthropic-dangerous-direct-browser-access opts the request
-// into CORS from a browser origin; the key is visible to anything running on
-// this page, so use a key you are willing to expose (see README note).
-const AI_MODEL = 'claude-opus-5';
-const KEY_STORAGE = 'pocketpython.anthropicKey';
+// OpenRouter is called straight from the page and allows browser origins
+// outright (Access-Control-Allow-Origin: *), so no special opt-in header is
+// needed. The key is still visible to anything running on this page — use a
+// key with a spend limit (see README note).
+const AI_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
+const AI_MODEL = 'anthropic/claude-opus-5';
+const KEY_STORAGE = 'pocketpython.openrouterKey';
+
+// A key for the previous provider is useless here and should not linger.
+try { localStorage.removeItem('pocketpython.anthropicKey'); } catch(e){}
 
 function getApiKey(){
   try { return localStorage.getItem(KEY_STORAGE) || ''; } catch(e){ return ''; }
@@ -1068,7 +1072,7 @@ function askApiKey(){
   let entered;
   try{
     entered = window.prompt(
-      'Введите API-ключ Anthropic (sk-ant-…).\nОставьте поле пустым, чтобы удалить сохранённый ключ.',
+      'Введите API-ключ OpenRouter (sk-or-v1-…).\nОставьте поле пустым, чтобы удалить сохранённый ключ.',
       current
     );
   }catch(e){
@@ -1099,29 +1103,36 @@ const AI_SCHEMA = {
   additionalProperties: false
 };
 
-// Server-side refusal fallbacks need a beta flag. If this account or endpoint
-// does not accept it, retry once without it rather than losing the feature.
-async function callAnthropic(key, body){
-  const send = (payload, beta) => fetch("https://api.anthropic.com/v1/messages", {
+// OpenRouter speaks the OpenAI chat-completions shape. `reasoning` and the
+// json_schema response format are supported by this model but are optional
+// extras: if a provider rejects either, retry once without them rather than
+// losing the feature entirely.
+async function callOpenRouter(key, body){
+  const send = (payload) => fetch(AI_ENDPOINT, {
     method: "POST",
-    headers: Object.assign({
+    headers: {
       "content-type": "application/json",
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
-      // Opts this cross-origin request into CORS; without it the browser blocks it.
-      "anthropic-dangerous-direct-browser-access": "true"
-    }, beta ? {"anthropic-beta": beta} : {}),
+      "Authorization": "Bearer " + key,
+      // Optional, used by OpenRouter to attribute traffic to the app.
+      "HTTP-Referer": location.origin,
+      "X-Title": "Pocket Python"
+    },
     body: JSON.stringify(payload)
   });
 
-  const resp = await send(body, "server-side-fallback-2026-07-01");
+  const resp = await send(body);
   if(resp.status !== 400) return resp;
 
   const text = await resp.clone().text();
-  if(!/fallback|beta/i.test(text)) return resp;
+  if(!/reasoning|response_format|json_schema|structured/i.test(text)) return resp;
   const retry = Object.assign({}, body);
-  delete retry.fallbacks;
-  return send(retry, null);
+  delete retry.reasoning;
+  delete retry.response_format;
+  // Without the schema the model must be told to return bare JSON.
+  retry.messages = retry.messages.map(m => m.role === 'system'
+    ? {role:'system', content: m.content + '\nОтветь одним объектом JSON с полями ok, comment, fixed_code. Без markdown и текста вокруг.'}
+    : m);
+  return send(retry);
 }
 
 aiBtn.onclick = async function(){
@@ -1138,21 +1149,23 @@ aiBtn.onclick = async function(){
   logLine('Спрашиваю ИИ…','line-sys');
   const code = cm.getValue();
   try{
-    const resp = await callAnthropic(key, {
+    const resp = await callOpenRouter(key, {
         model: AI_MODEL,
         max_tokens: 16000,
-        fallbacks: "default",
-        output_config: {
-          effort: "medium",
-          format: { type: "json_schema", schema: AI_SCHEMA }
+        reasoning: { effort: "medium" },
+        response_format: {
+          type: "json_schema",
+          json_schema: { name: "code_review", strict: true, schema: AI_SCHEMA }
         },
-        system:
+        messages: [{
+          role: "system",
+          content:
 `Ты — ассистент проверки Python-кода для новичка. Код может использовать модуль turtle.
 Проверь код на ошибки: синтаксис, логика, опечатки в командах turtle.
 В поле comment дай краткий комментарий на русском, максимум 4 предложения.
 В fixed_code верни полный исправленный код целиком, если нашёл ошибку, иначе null.
-Если код и так рабочий — ok:true, fixed_code:null, а в comment дай один короткий совет по улучшению.`,
-        messages: [{
+Если код и так рабочий — ok:true, fixed_code:null, а в comment дай один короткий совет по улучшению.`
+        },{
           role: "user",
           content:
 `Вот код:
@@ -1169,21 +1182,42 @@ ${lastError ? "Последняя ошибка при запуске:\n" + lastE
         const err = await resp.json();
         if(err && err.error && err.error.message) detail = err.error.message;
       }catch(e){}
-      logLine(resp.status === 401
+      logLine(resp.status === 401 || resp.status === 403
         ? 'Ключ не принят: ' + detail + ' — нажмите 🔑, чтобы ввести другой.'
-        : 'ИИ ответил ошибкой: ' + detail, 'line-err');
+        : (resp.status === 402
+            ? 'На счету OpenRouter закончились средства: ' + detail
+            : 'ИИ ответил ошибкой: ' + detail), 'line-err');
       return;
     }
 
     const data = await resp.json();
-    if(data.stop_reason === 'refusal'){
-      logLine('ИИ отказался отвечать на этот запрос.','line-err');
+    // OpenRouter can report a failure inside a 200 response.
+    if(data.error){
+      logLine('ИИ ответил ошибкой: ' + (data.error.message || 'неизвестная ошибка'),'line-err');
       return;
     }
 
-    const raw = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text||'').join('').trim();
+    const choice = (data.choices || [])[0];
+    if(!choice){
+      logLine('ИИ вернул пустой ответ.','line-err');
+      return;
+    }
+    if(choice.finish_reason === 'content_filter'){
+      logLine('Запрос отклонён фильтром модели.','line-err');
+      return;
+    }
+
+    const msg = choice.message || {};
+    // content is a string in the chat-completions shape, but some providers
+    // return the multipart array form.
+    const raw = (typeof msg.content === 'string'
+      ? msg.content
+      : (Array.isArray(msg.content)
+          ? msg.content.map(b => (b && b.text) || '').join('')
+          : '')).trim();
+    const cleaned = raw.replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim();
     let parsed;
-    try{ parsed = JSON.parse(raw); }
+    try{ parsed = JSON.parse(cleaned); }
     catch(e){ parsed = {ok:true, comment: raw || 'Не удалось разобрать ответ.', fixed_code: null}; }
 
     const div = document.createElement('div');

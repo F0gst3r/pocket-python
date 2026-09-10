@@ -73,7 +73,7 @@ self.addEventListener('fetch', (e) => {
 
   const sameOrigin = url.origin === self.location.origin;
   const isRuntimeAsset = RUNTIME_HOSTS.includes(url.hostname);
-  if (!sameOrigin && !isRuntimeAsset) return;   // e.g. api.anthropic.com — never cache
+  if (!sameOrigin && !isRuntimeAsset) return;   // e.g. openrouter.ai — never cache
 
   const isShell =
     req.mode === 'navigate' ||
