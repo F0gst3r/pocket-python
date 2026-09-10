@@ -1058,7 +1058,23 @@ async function animateReplace(newFullCode){
 // needed. The key is still visible to anything running on this page — use a
 // key with a spend limit (see README note).
 const AI_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
-const AI_MODEL = 'anthropic/claude-opus-5';
+// Free models only. The first entry is OpenRouter's own router, which picks a
+// free model at random; the rest are named fallbacks, because free tiers are
+// rate-limited hard and a single model will regularly answer 429.
+const AI_MODELS = [
+  'openrouter/free',                        // случайная бесплатная модель
+  'poolside/laguna-s-2.1:free',             // агент для кода, 262k контекста
+  'cohere/north-mini-code:free',            // тоже заточена под код
+  'nvidia/nemotron-3-super-120b-a12b:free'
+];
+
+// Which model the router lands on is not knowable in advance, and OpenRouter
+// silently DROPS parameters a model does not support instead of failing — so a
+// response_format could quietly turn structured replies back into prose. The
+// JSON contract therefore lives in the system prompt and extractJson() parses
+// defensively. Only enable this if every model above lists
+// "structured_outputs" in supported_parameters at openrouter.ai/api/v1/models.
+const AI_SUPPORTS_JSON_SCHEMA = false;
 const KEY_STORAGE = 'pocketpython.openrouterKey';
 
 // A key for the previous provider is useless here and should not linger.
@@ -1103,11 +1119,40 @@ const AI_SCHEMA = {
   additionalProperties: false
 };
 
+// Pulls the reply object out of a model that was merely asked for JSON rather
+// than constrained to it: unwrap a ``` fence, else scan for the first balanced
+// {...} block, ignoring braces that sit inside strings (fixed_code can contain
+// them). Returns null when nothing parses.
+function extractJson(text){
+  let t = String(text).trim();
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if(fence) t = fence[1].trim();
+  try{ return JSON.parse(t); }catch(e){}
+
+  const start = t.indexOf('{');
+  if(start === -1) return null;
+  let depth = 0, inStr = false, esc = false;
+  for(let i = start; i < t.length; i++){
+    const ch = t[i];
+    if(inStr){
+      if(esc) esc = false;
+      else if(ch === '\\') esc = true;
+      else if(ch === '"') inStr = false;
+      continue;
+    }
+    if(ch === '"') inStr = true;
+    else if(ch === '{') depth++;
+    else if(ch === '}' && --depth === 0){
+      try{ return JSON.parse(t.slice(start, i + 1)); }catch(e){ return null; }
+    }
+  }
+  return null;
+}
+
 // OpenRouter speaks the OpenAI chat-completions shape. `reasoning` and the
-// json_schema response format are supported by this model but are optional
-// extras: if a provider rejects either, retry once without them rather than
-// losing the feature entirely.
-async function callOpenRouter(key, body){
+// json_schema response format are optional extras: if a provider rejects
+// either, retry once without them rather than losing the feature entirely.
+async function callOpenRouter(key, baseBody){
   const send = (payload) => fetch(AI_ENDPOINT, {
     method: "POST",
     headers: {
@@ -1120,19 +1165,36 @@ async function callOpenRouter(key, body){
     body: JSON.stringify(payload)
   });
 
-  const resp = await send(body);
-  if(resp.status !== 400) return resp;
+  // Nothing to gain from another free model when the key itself is the problem.
+  const FATAL = [401, 402, 403];
+  let lastResp = null;
 
-  const text = await resp.clone().text();
-  if(!/reasoning|response_format|json_schema|structured/i.test(text)) return resp;
-  const retry = Object.assign({}, body);
-  delete retry.reasoning;
-  delete retry.response_format;
-  // Without the schema the model must be told to return bare JSON.
-  retry.messages = retry.messages.map(m => m.role === 'system'
-    ? {role:'system', content: m.content + '\nОтветь одним объектом JSON с полями ok, comment, fixed_code. Без markdown и текста вокруг.'}
-    : m);
-  return send(retry);
+  for(let i = 0; i < AI_MODELS.length; i++){
+    const model = AI_MODELS[i];
+    let resp = await send(Object.assign({}, baseBody, {model}));
+
+    // A model that rejects an optional extra gets one retry without it; the
+    // system prompt already demands bare JSON, so dropping them is safe.
+    if(resp.status === 400){
+      const text = await resp.clone().text();
+      if(/reasoning|response_format|json_schema|structured/i.test(text)){
+        const retry = Object.assign({}, baseBody, {model});
+        delete retry.reasoning;
+        delete retry.response_format;
+        resp = await send(retry);
+      }
+    }
+
+    if(resp.ok || FATAL.includes(resp.status)) return resp;
+
+    lastResp = resp;
+    if(i < AI_MODELS.length - 1){
+      logLine(resp.status === 429
+        ? 'Лимит бесплатной модели исчерпан, пробую следующую…'
+        : 'Модель недоступна (HTTP ' + resp.status + '), пробую следующую…', 'line-sys');
+    }
+  }
+  return lastResp;
 }
 
 aiBtn.onclick = async function(){
@@ -1149,21 +1211,20 @@ aiBtn.onclick = async function(){
   logLine('Спрашиваю ИИ…','line-sys');
   const code = cm.getValue();
   try{
-    const resp = await callOpenRouter(key, {
-        model: AI_MODEL,
+    const request = {
         max_tokens: 16000,
         reasoning: { effort: "medium" },
-        response_format: {
-          type: "json_schema",
-          json_schema: { name: "code_review", strict: true, schema: AI_SCHEMA }
-        },
         messages: [{
           role: "system",
           content:
 `Ты — ассистент проверки Python-кода для новичка. Код может использовать модуль turtle.
 Проверь код на ошибки: синтаксис, логика, опечатки в командах turtle.
-В поле comment дай краткий комментарий на русском, максимум 4 предложения.
-В fixed_code верни полный исправленный код целиком, если нашёл ошибку, иначе null.
+
+Ответь ОДНИМ объектом JSON и ничем больше — без markdown, без пояснений вокруг:
+{"ok": true|false, "comment": "...", "fixed_code": "..."|null}
+
+comment — краткий комментарий на русском, максимум 4 предложения.
+fixed_code — полный исправленный код целиком, если нашёл ошибку, иначе null.
 Если код и так рабочий — ok:true, fixed_code:null, а в comment дай один короткий совет по улучшению.`
         },{
           role: "user",
@@ -1174,7 +1235,16 @@ ${code}
 
 ${lastError ? "Последняя ошибка при запуске:\n" + lastError : "Ошибок при запуске не было."}`
         }]
-    });
+    };
+    // Only constrain the format on models that actually implement it.
+    if(AI_SUPPORTS_JSON_SCHEMA){
+      request.response_format = {
+        type: "json_schema",
+        json_schema: { name: "code_review", strict: true, schema: AI_SCHEMA }
+      };
+    }
+
+    const resp = await callOpenRouter(key, request);
 
     if(!resp.ok){
       let detail = 'HTTP ' + resp.status;
@@ -1184,8 +1254,8 @@ ${lastError ? "Последняя ошибка при запуске:\n" + lastE
       }catch(e){}
       logLine(resp.status === 401 || resp.status === 403
         ? 'Ключ не принят: ' + detail + ' — нажмите 🔑, чтобы ввести другой.'
-        : (resp.status === 402
-            ? 'На счету OpenRouter закончились средства: ' + detail
+        : (resp.status === 429
+            ? 'Все бесплатные модели сейчас заняты. Попробуйте через пару минут.'
             : 'ИИ ответил ошибкой: ' + detail), 'line-err');
       return;
     }
@@ -1215,10 +1285,11 @@ ${lastError ? "Последняя ошибка при запуске:\n" + lastE
       : (Array.isArray(msg.content)
           ? msg.content.map(b => (b && b.text) || '').join('')
           : '')).trim();
-    const cleaned = raw.replace(/^```(?:json)?\s*/i,'').replace(/```\s*$/,'').trim();
-    let parsed;
-    try{ parsed = JSON.parse(cleaned); }
-    catch(e){ parsed = {ok:true, comment: raw || 'Не удалось разобрать ответ.', fixed_code: null}; }
+    const parsed = extractJson(raw)
+      || {ok:true, comment: raw || 'Не удалось разобрать ответ.', fixed_code: null};
+
+    // The router picks a different model each time, so name the one that answered.
+    if(data.model) logLine('Ответила модель: ' + data.model, 'line-sys');
 
     const div = document.createElement('div');
     div.className = 'ai-block';
