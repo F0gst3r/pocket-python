@@ -54,7 +54,7 @@
     --color-accent-kicker:#9690c9;
 
     --color-err:#eba3ac;
-    --paper:#e4e7f5;
+    --paper:#1b1d2c;              /* холст черепахи — тоже тёмный */
 
     /* syntax */
     --syn-keyword:#b5abfc;
@@ -427,7 +427,7 @@
     min-height:0;
     display:none;
     position:relative;
-    background:var(--color-surface-2);
+    background:var(--color-bg);
     align-items:center;
     justify-content:center;
     overflow:hidden;
@@ -864,7 +864,7 @@ const canvas = document.getElementById('tcanvas');
 const ctx = canvas.getContext('2d');
 const zoomLevelEl = document.getElementById('zoomLevel');
 
-let bg = '#e4e7f5';                 // --paper
+let bg = '#1b1d2c';                 // --paper
 let drawOps = [];              // recorded turtle-space draw operations, replayed on zoom/pan/resize
 let scaleV = 1, offX = 0, offY = 0;
 const MIN_SCALE = 0.15, MAX_SCALE = 10;
@@ -882,7 +882,31 @@ function niceGridStep(){
   return steps[steps.length-1];
 }
 
+// The background is whatever bgcolor() was last given, so the grid and the
+// default pen are derived from it rather than hard-coded: on the dark canvas
+// they are light, and they flip back if a program sets a light background.
+const probeCtx = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 1;
+  return c.getContext('2d', {willReadFrequently:true});
+})();
+function isDarkColor(color){
+  try{
+    probeCtx.fillStyle = '#000000';
+    probeCtx.fillStyle = color;        // an invalid value leaves the previous one
+    probeCtx.fillRect(0,0,1,1);
+    const d = probeCtx.getImageData(0,0,1,1).data;
+    return (0.2126*d[0] + 0.7152*d[1] + 0.0722*d[2]) / 255 < 0.5;
+  }catch(e){ return true; }
+}
+let inkIsLight = true;
+function refreshInk(){ inkIsLight = isDarkColor(bg); }
+// Colour a turtle uses when the program never set one — real turtle draws black,
+// which would be invisible here.
+window.turtleInk = function(){ return inkIsLight ? '#e9e9ed' : '#171220'; };
+
 function drawGrid(){
+  refreshInk();
   ctx.setTransform(1,0,0,1,0,0);
   ctx.fillStyle = bg;
   ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -891,13 +915,13 @@ function drawGrid(){
   const [wx2,wy2] = pxToWorld(canvas.width,0);
   const startX = Math.floor(wx1/step)*step, endX = Math.ceil(wx2/step)*step;
   const startY = Math.floor(wy1/step)*step, endY = Math.ceil(wy2/step)*step;
-  ctx.strokeStyle = 'rgba(23,18,32,0.09)';
+  ctx.strokeStyle = inkIsLight ? 'rgba(233,233,237,0.07)' : 'rgba(23,18,32,0.09)';
   ctx.lineWidth = 1;
   ctx.beginPath();
   for(let x=startX; x<=endX; x+=step){ const [px] = worldToPx(x,0); ctx.moveTo(px+0.5,0); ctx.lineTo(px+0.5,canvas.height); }
   for(let y=startY; y<=endY; y+=step){ const py = worldToPx(0,y)[1]; ctx.moveTo(0,py+0.5); ctx.lineTo(canvas.width,py+0.5); }
   ctx.stroke();
-  ctx.strokeStyle = 'rgba(23,18,32,0.25)';
+  ctx.strokeStyle = inkIsLight ? 'rgba(233,233,237,0.22)' : 'rgba(23,18,32,0.25)';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   const ax = worldToPx(0,0)[0], ay = worldToPx(0,0)[1];
@@ -910,21 +934,21 @@ function drawWriteOp(op){
   ctx.save();
   ctx.setTransform(1,0,0,1,0,0);
   const [px,py] = worldToPx(op.x, op.y);
-  ctx.fillStyle = op.color;
+  ctx.fillStyle = op.color || window.turtleInk();
   ctx.font = Math.max(8, op.size*scaleV) + 'px sans-serif';
   ctx.fillText(op.text, px, py);
   ctx.restore();
 }
 function drawOp(op){
   if(op.type==='line'){
-    ctx.strokeStyle=op.color; ctx.lineWidth=op.width; ctx.lineCap='round';
+    ctx.strokeStyle=op.color || window.turtleInk(); ctx.lineWidth=op.width; ctx.lineCap='round';
     ctx.beginPath(); ctx.moveTo(op.x1,op.y1); ctx.lineTo(op.x2,op.y2); ctx.stroke();
   } else if(op.type==='dot'){
-    ctx.fillStyle=op.color;
+    ctx.fillStyle=op.color || window.turtleInk();
     ctx.beginPath(); ctx.arc(op.x,op.y,op.size/2,0,Math.PI*2); ctx.fill();
   } else if(op.type==='poly'){
     if(op.pts.length<2) return;
-    ctx.fillStyle=op.color;
+    ctx.fillStyle=op.color || window.turtleInk();
     ctx.beginPath();
     ctx.moveTo(op.pts[0][0],op.pts[0][1]);
     for(let i=1;i<op.pts.length;i++) ctx.lineTo(op.pts[i][0],op.pts[i][1]);
@@ -949,7 +973,11 @@ function resizeCanvas(){
 }
 window.addEventListener('resize', resizeCanvas);
 
+const DEFAULT_BG = '#1b1d2c';       // --paper
 window.turtleClear = function(){ drawOps = []; scaleV=1; offX=0; offY=0; render(); };
+// A run starts from a blank canvas: the previous program's drawing, its
+// background and its zoom must not bleed into the next one.
+window.turtleReset = function(){ bg = DEFAULT_BG; window.turtleClear(); };
 window.turtleBg = function(color){ bg = color; render(); };
 window.turtleLine = function(x1,y1,x2,y2,color,width){
   const op = {type:'line',x1,y1,x2,y2,color,width};
@@ -1061,8 +1089,10 @@ class Turtle:
         self.y = 0.0
         self.heading_deg = 0.0
         self.down = True
-        self._color = "black"
-        self._fill = "black"
+        # None means "not chosen" — the canvas picks ink that contrasts with
+        # the current background, since real turtle's black would vanish here.
+        self._color = None
+        self._fill = None
         self._width = 1
         self._speed = 6
         self._filling = False
@@ -1126,7 +1156,7 @@ class Turtle:
     def home(self): self.goto(0,0); self.heading_deg = 0
 
     def color(self, *args):
-        if not args: return (self._color, self._fill)
+        if not args: return (self._color or js.turtleInk(), self._fill or js.turtleInk())
         if len(args) == 1:
             self._color = self._fill = _tocss(args[0])
         elif len(args) == 3 and all(isinstance(a, (int, float)) for a in args):
@@ -1136,11 +1166,11 @@ class Turtle:
             self._fill = _tocss(args[1])
 
     def pencolor(self, *args):
-        if not args: return self._color
+        if not args: return self._color or js.turtleInk()
         self._color = _tocss(args[0] if len(args) == 1 else args)
 
     def fillcolor(self, *args):
-        if not args: return self._fill
+        if not args: return self._fill or js.turtleInk()
         self._fill = _tocss(args[0] if len(args) == 1 else args)
 
     def pensize(self, w=None):
@@ -1170,7 +1200,7 @@ class Turtle:
         self._fillpts = []
 
     def dot(self, size=8, color=None):
-        js.turtleDot(self.x, self.y, size, color or self._color)
+        js.turtleDot(self.x, self.y, size, _tocss(color) if color else self._color)
 
     def write(self, text, move=False, align="left", font=("Arial",12,"normal")):
         size = font[1] if isinstance(font,(tuple,list)) and len(font)>1 else 12
@@ -1430,12 +1460,10 @@ runBtn.onclick = async function(){
     // matched none of the earlier patterns — the program drew but the Graphics
     // tab never opened.
     const usesTurtle = /\bfrom\s+turtle\s+import\b|\bimport\s+turtle\b|\bturtle\.|\bTurtle\(\)/.test(code);
-    if(usesTurtle){
-      showTab('graphics');
-    } else {
-      if(window.turtleClear) window.turtleClear();
-      showTab('console');
-    }
+    // Previously the canvas was wiped only when the program did NOT draw, so
+    // running a turtle program twice stacked both drawings on top of each other.
+    window.turtleReset();
+    showTab(usesTurtle ? 'graphics' : 'console');
     const started = performance.now();
     try{
       await py.runPythonAsync(code);
