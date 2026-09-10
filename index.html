@@ -257,6 +257,18 @@
     border-right:none !important;
   }
   .CodeMirror-linenumber{color:var(--color-gutter) !important; padding:0 11.2px 0 16.8px;}
+  /* CodeMirror only hides the gutter's selection highlight, leaving the digits
+     selectable. On touch devices the editor uses a contenteditable input, where
+     the browser copies straight from the DOM — so «Выделить всё» + «Скопировать»
+     put the line numbers into the clipboard, interleaved with the code. */
+  .CodeMirror-gutters,
+  .CodeMirror-gutter,
+  .CodeMirror-gutter-wrapper,
+  .CodeMirror-linenumber{
+    -webkit-user-select:none;
+    -moz-user-select:none;
+    user-select:none;
+  }
   .CodeMirror-lines{padding-left:5.6px;}
   .CodeMirror-cursor{border-left:2px solid var(--color-accent-400) !important;}
   .cm-fixing .CodeMirror-cursor{border-left:2px solid var(--color-accent) !important;}
@@ -682,16 +694,6 @@ const cm = CodeMirror.fromTextArea(editorTextarea,{
     input.setAttribute('spellcheck','false');
   }
 })();
-cm.setValue(
-`import turtle
-
-t = turtle.Turtle()
-t.color("#9184d9")
-for i in range(4):
-    t.forward(120)
-    t.right(90)
-turtle.done()
-`);
 // ---------- status chrome: filename, unsaved marker, caret position ----------
 const filenameEl = document.getElementById('filename');
 const dirtyDot = document.getElementById('dirtydot');
@@ -706,6 +708,16 @@ cm.on('cursorActivity', function(){
   cursorPosEl.textContent = 'Стр ' + (c.line + 1) + ', Кол ' + (c.ch + 1);
 });
 cm.on('change', function(){ if(!dirty) setDirty(true); });
+
+// CodeMirror puts a zero-width space in the DOM of every empty line. Copying
+// out of the editor on a touch device picks it up, and Python then rejects the
+// pasted code with "invalid non-printable character U+200B". Strip those (and a
+// stray BOM) whenever text arrives by paste.
+cm.on('beforeChange', function(_cm, change){
+  if(change.origin !== 'paste') return;
+  const cleaned = change.text.map(l => l.replace(/[\u200B\u200C\u200D\uFEFF]/g, ''));
+  if(cleaned.some((l, i) => l !== change.text[i])) change.update(change.from, change.to, cleaned);
+});
 
 cm.on('inputRead', function(cm, change){
   if(change.text[0] && /[\w.]/.test(change.text[0])){
