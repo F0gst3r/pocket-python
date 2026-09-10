@@ -923,6 +923,8 @@ window.turtlePolygon = function(pts,color){
   const op = {type:'poly',pts,color};
   drawOps.push(op); drawOp(op);
 };
+window.turtleWidth = function(){ return canvas.width; };
+window.turtleHeight = function(){ return canvas.height; };
 window.turtleWrite = function(x,y,text,color,size){
   const op = {type:'write',x,y,text,color,size};
   drawOps.push(op); drawOp(op);
@@ -1002,6 +1004,17 @@ window.addEventListener('mouseup', ()=>{ dragState = null; });
 const TURTLE_SHIM = `
 import js, math, time
 
+_colormode = 1.0
+
+def _tocss(c, *rest):
+    """Accept "red", "#rrggbb", (r,g,b) and r,g,b — as the real turtle does."""
+    if rest: c = (c,) + rest
+    if isinstance(c, (tuple, list)):
+        mx = _colormode or 1.0
+        vals = [max(0, min(255, int(round(float(v) * 255.0 / mx)))) for v in c[:3]]
+        return '#%02x%02x%02x' % tuple(vals)
+    return str(c)
+
 class Turtle:
     def __init__(self):
         self.x = 0.0
@@ -1072,13 +1085,27 @@ class Turtle:
 
     def home(self): self.goto(0,0); self.heading_deg = 0
 
-    def color(self, c, c2=None):
-        self._color = c
-        self._fill = c2 if c2 else c
-    def pencolor(self, c): self._color = c
-    def fillcolor(self, c): self._fill = c
+    def color(self, *args):
+        if not args: return (self._color, self._fill)
+        if len(args) == 1:
+            self._color = self._fill = _tocss(args[0])
+        elif len(args) == 3 and all(isinstance(a, (int, float)) for a in args):
+            self._color = self._fill = _tocss(args)
+        else:
+            self._color = _tocss(args[0])
+            self._fill = _tocss(args[1])
 
-    def pensize(self, w): self._width = w
+    def pencolor(self, *args):
+        if not args: return self._color
+        self._color = _tocss(args[0] if len(args) == 1 else args)
+
+    def fillcolor(self, *args):
+        if not args: return self._fill
+        self._fill = _tocss(args[0] if len(args) == 1 else args)
+
+    def pensize(self, w=None):
+        if w is None: return self._width
+        self._width = w
     width = pensize
 
     def speed(self, s=None):
@@ -1114,10 +1141,28 @@ class Turtle:
         js.turtleClear()
         self.__init__()
 
-    def hideturtle(self): pass
+    def hideturtle(self): self._shown = False
     ht = hideturtle
-    def showturtle(self): pass
+    def showturtle(self): self._shown = True
     st = showturtle
+    def isvisible(self): return getattr(self, '_shown', True)
+
+    def xcor(self): return self.x
+    def ycor(self): return self.y
+    def pos(self): return (self.x, self.y)
+    position = pos
+    def heading(self): return self.heading_deg
+    def isdown(self): return self.down
+
+    def towards(self, x, y=None):
+        if y is None and isinstance(x, (tuple, list)): x, y = x[0], x[1]
+        elif y is None and isinstance(x, Turtle): x, y = x.x, x.y
+        return math.degrees(math.atan2(y - self.y, x - self.x)) % 360
+
+    def distance(self, x, y=None):
+        if y is None and isinstance(x, (tuple, list)): x, y = x[0], x[1]
+        elif y is None and isinstance(x, Turtle): x, y = x.x, x.y
+        return math.hypot(x - self.x, y - self.y)
 
 class _Screen:
     def bgcolor(self, c): js.turtleBg(c)
@@ -1129,37 +1174,79 @@ class _Screen:
     def setup(self, *a, **k): pass
 
 _default = Turtle()
+_screen = _Screen()
 Screen = _Screen
+Pen = Turtle
+RawTurtle = Turtle
 
-def forward(d): _default.forward(d)
-def backward(d): _default.backward(d)
-def left(a): _default.left(a)
-def right(a): _default.right(a)
-def penup(): _default.penup()
-def pendown(): _default.pendown()
-def goto(x,y=None): _default.goto(x,y)
-def setpos(x,y=None): _default.goto(x,y)
-def color(c,c2=None): _default.color(c,c2)
-def pencolor(c): _default.pencolor(c)
-def fillcolor(c): _default.fillcolor(c)
-def pensize(w): _default.pensize(w)
-def speed(s=None): _default.speed(s)
-def circle(r,extent=360,steps=None): _default.circle(r,extent,steps)
-def begin_fill(): _default.begin_fill()
-def end_fill(): _default.end_fill()
-def dot(size=8,color=None): _default.dot(size,color)
-def write(text,move=False,align="left",font=("Arial",12,"normal")): _default.write(text,move,align,font)
-def home(): _default.home()
-def clear(): js.turtleClear()
-def reset(): js.turtleClear()
-def bgcolor(c): js.turtleBg(c)
-def hideturtle(): pass
-def showturtle(): pass
+def getscreen(): return _screen
+def getturtle(): return _default
+getpen = getturtle
+
+# Mirror every public method of the default turtle at module level, the way the
+# real turtle module does. Hand-writing them missed every short alias — fd, bk,
+# lt, rt, pu, pd, ht, st, seth, setx, setposition — so "from turtle import *"
+# then lt(90) raised NameError. Deriving them from the class cannot drift.
+def _module_level(name):
+    def _fn(*a, **k):
+        return getattr(_default, name)(*a, **k)
+    _fn.__name__ = name
+    _fn.__doc__ = getattr(Turtle, name, None).__doc__ if hasattr(Turtle, name) else None
+    return _fn
+
+for _name in dir(_default):
+    if not _name.startswith('_') and callable(getattr(_default, _name)):
+        globals()[_name] = _module_level(_name)
+del _name
+
+# ---- screen-level functions (not methods of a turtle) ----
+def bgcolor(*a):
+    if not a: return None
+    js.turtleBg(_tocss(a[0] if len(a) == 1 else a))
+
+def colormode(cm=None):
+    global _colormode
+    if cm is None: return _colormode
+    _colormode = float(cm)
+    return _colormode
+
+def clearscreen(): js.turtleClear()
+def resetscreen(): js.turtleClear()
+
+def window_width(): return int(js.turtleWidth())
+def window_height(): return int(js.turtleHeight())
+screensize = lambda *a, **k: (window_width(), window_height())
+
+def numinput(title=None, prompt=None, default=None, minval=None, maxval=None):
+    ans = js.pyInput(str(prompt or title or 'Введите число:'))
+    if ans is None: return default
+    try: return float(ans)
+    except ValueError: return default
+
+def textinput(title=None, prompt=None):
+    return js.pyInput(str(prompt or title or 'Введите текст:'))
+
+# Animation and event hooks: this shim draws synchronously and has no event
+# loop, so these exist to keep real turtle programs running rather than to do
+# anything. Silently accepting them beats a NameError.
+def tracer(*a, **k): pass
+def update(): pass
+def delay(*a): return 0
+def listen(*a, **k): pass
+def onkey(*a, **k): pass
+onkeypress = onkey
+onkeyrelease = onkey
+def onclick(*a, **k): pass
+onscreenclick = onclick
+def ontimer(*a, **k): pass
+def mode(*a): return 'standard'
 def done(): pass
 def mainloop(): pass
 def exitonclick(): pass
+def bye(): pass
 def title(t): pass
-def setup(*a,**k): pass
+def setup(*a, **k): pass
+def setworldcoordinates(*a, **k): pass
 `;
 
 // ---------- pyodide runtime ----------
@@ -1214,20 +1301,63 @@ builtins.input = _input
 // separately. The console lays its children out as spaced rows, so fragments
 // must be buffered and flushed per newline or one print becomes four rows.
 const pyBuf = {out:'', err:''};
+
+// A traceback frame is a `File "..."` line plus the indented lines under it.
+// Pyodide's own runner frames are noise between the user and their mistake, but
+// the indented lines under the USER's frame are the offending source and the
+// caret that points at it — a SyntaxError is unreadable without them. So drop
+// by whole frame rather than by line pattern.
+const PY_FRAME = /^\s*File "\/lib\/python/;
+const ANY_FRAME = /^\s*File "/;
+let inNoisyFrame = false;
+function isNoise(line){
+  if(ANY_FRAME.test(line)){
+    inNoisyFrame = PY_FRAME.test(line);
+    return inNoisyFrame;
+  }
+  if(inNoisyFrame){
+    // A line at column 0 ends the frame list — that is the exception itself.
+    if(/^\S/.test(line)){ inNoisyFrame = false; return false; }
+    return true;
+  }
+  return false;
+}
+// Point the remaining frames at the user's program instead of "<exec>".
+function humanFrame(line){
+  return line
+    .replace(/^Traceback \(most recent call last\):$/, 'Ошибка при выполнении:')
+    .replace(/^\s*File "<exec>", line (\d+), in <module>\s*$/, '  Ваш код, строка $1')
+    .replace(/^\s*File "<exec>", line (\d+), in (.+)$/, '  Ваш код, строка $1, в $2')
+    .replace(/^\s*File "<exec>", line (\d+)\s*$/, '  Ваш код, строка $1');
+}
+
+let rawStderr = '';
 window.pyWrite = function(text, kind){
   const k = kind === 'err' ? 'err' : 'out';
   pyBuf[k] += text;
   let i;
   while((i = pyBuf[k].indexOf('\n')) !== -1){
-    logLine(pyBuf[k].slice(0, i), k === 'err' ? 'line-err' : 'line-out');
+    const line = pyBuf[k].slice(0, i);
     pyBuf[k] = pyBuf[k].slice(i + 1);
+    if(k === 'err'){
+      rawStderr += line + '\n';
+      if(isNoise(line)) continue;
+      logLine(humanFrame(line), 'line-err');
+    } else {
+      logLine(line, 'line-out');
+    }
   }
 };
 // A program can end without a trailing newline; nothing is lost.
 function flushPyOut(){
   for(const k of ['out','err']){
     if(pyBuf[k]){
-      logLine(pyBuf[k], k === 'err' ? 'line-err' : 'line-out');
+      if(k === 'err'){
+        rawStderr += pyBuf[k] + '\n';
+        if(!isNoise(pyBuf[k])) logLine(humanFrame(pyBuf[k]), 'line-err');
+      } else {
+        logLine(pyBuf[k], 'line-out');
+      }
       pyBuf[k] = '';
     }
   }
@@ -1251,6 +1381,7 @@ runBtn.onclick = async function(){
   runBtn.disabled = true;
   clearConsole();
   pyBuf.out = ''; pyBuf.err = '';
+  rawStderr = ''; inNoisyFrame = false;
   lastError = '';
   try{
     const py = await getPyodide();
@@ -1270,8 +1401,10 @@ runBtn.onclick = async function(){
       logLine('Программа завершена · ' + secs + ' с', 'line-ok', 'ph ph-check');
     }catch(e){
       flushPyOut();
-      lastError = cleanTraceback(e.message || String(e));
-      logLine(lastError, 'line-err', 'ph ph-warning-circle');
+      // The traceback already reached the console through stderr; only say
+      // something here if it did not (message is usually empty on PythonError).
+      lastError = cleanTraceback(rawStderr || e.message || String(e));
+      if(!rawStderr) logLine(lastError, 'line-err', 'ph ph-warning-circle');
       showTab('console');
     }
   }catch(e){
