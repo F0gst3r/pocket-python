@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Pocket Python</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#171220">
+<link rel="icon" href="icon-192.png">
+<!-- iOS/iPadOS ignore the manifest icons for the home screen and use this one.
+     It must be opaque: transparency is composited onto black. -->
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pocket Python">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#171220;
+    --panel:#1e1729;
+    --panel-2:#120d19;
+    --line:#362a41;
+    --line-soft:#2a2233;
+    --ink:#f2ece2;
+    --ink-dim:#a79ab0;
+    --coral:#ff7a45;
+    --coral-dim:#8a4527;
+    --violet:#9b8cff;
+    --violet-dim:#463f78;
+    --err:#ff6b7a;
+    --paper:#f6efdf;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    height:100%;
+    margin:0;
+    /* iOS Safari collapses percentage heights when its toolbars animate; dvh
+       tracks the visible viewport, and -webkit-fill-available covers older iOS. */
+    height:-webkit-fill-available;
+    height:100dvh;
+    overscroll-behavior:none;
+    -webkit-text-size-adjust:100%;
+  }
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Space Grotesk',system-ui,-apple-system,sans-serif;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    position:fixed;
+    inset:0;
+    -webkit-tap-highlight-color:transparent;
+  }
+  button,.tabbtn{touch-action:manipulation;}
+  #toolbar{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:12px 16px;
+    /* black-translucent status bar draws under the page on iOS standalone */
+    padding-top:calc(12px + env(safe-area-inset-top));
+    padding-left:calc(16px + env(safe-area-inset-left));
+    padding-right:calc(16px + env(safe-area-inset-right));
+    background:linear-gradient(180deg,#1c1526,#150f1d);
+    border-bottom:1px solid var(--line);
+    flex-shrink:0;
+    flex-wrap:wrap;
+  }
+  #logo{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-weight:600;
+    font-size:15px;
+    color:var(--ink);
+    margin-right:auto;
+    letter-spacing:0.2px;
+  }
+  #logo .dot{
+    width:9px;height:9px;border-radius:50%;
+    background:radial-gradient(circle at 30% 30%, #ffb187, var(--coral));
+    box-shadow:0 0 10px rgba(255,122,69,.55);
+    flex-shrink:0;
+  }
+  #logo span{color:var(--ink-dim); font-weight:400;}
+
+  .sep{width:1px; align-self:stretch; background:var(--line); margin:0 2px;}
+
+  button.tool{
+    display:flex;
+    align-items:center;
+    gap:7px;
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:8px 15px;
+    border-radius:9px;
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13.5px;
+    font-weight:500;
+    cursor:pointer;
+    transition:border-color .15s, background .15s, transform .1s;
+    white-space:nowrap;
+  }
+  button.tool:hover{border-color:var(--line-soft); background:#241b30;}
+  button.tool:active{transform:translateY(1px);}
+  button#run{
+    background:linear-gradient(180deg,#ff8c5c,var(--coral));
+    border-color:transparent;
+    color:#2a0f02;
+    font-weight:600;
+    box-shadow:0 2px 14px rgba(255,122,69,.35);
+  }
+  button#run:hover{filter:brightness(1.07);}
+  button#run:disabled{opacity:.5; cursor:default; box-shadow:none;}
+  button#aicheck{color:#d8d2ff; border-color:var(--violet-dim);}
+  button#aicheck:hover{border-color:var(--violet); background:#211c37;}
+  button#aicheck:disabled{opacity:.5; cursor:default;}
+
+  #main{
+    flex:1;
+    display:flex;
+    min-height:0;
+  }
+  #editor-pane{
+    width:50%;
+    min-width:0;
+    border-right:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    background:var(--bg);
+  }
+  .CodeMirror{
+    height:100% !important;
+    font-family:'JetBrains Mono',monospace !important;
+    font-size:14px;
+    background:var(--bg) !important;
+    padding-top:8px;
+  }
+  .CodeMirror-gutters{background:var(--bg) !important; border-right:1px solid var(--line-soft) !important;}
+  .CodeMirror-cursor{border-left:2px solid var(--coral) !important;}
+  .cm-fixing .CodeMirror-cursor{border-left:2px solid var(--violet) !important;}
+
+  #right-pane{
+    width:50%;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    background:var(--panel);
+  }
+  #tabs{
+    display:flex;
+    gap:4px;
+    padding:10px 10px 0 10px;
+    flex-shrink:0;
+  }
+  .tabbtn{
+    background:transparent;
+    border:none;
+    color:var(--ink-dim);
+    padding:7px 15px;
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px;
+    font-weight:500;
+    cursor:pointer;
+    border-radius:7px 7px 0 0;
+    transition:color .15s, background .15s;
+  }
+  .tabbtn:hover{color:var(--ink);}
+  .tabbtn.active{color:var(--ink); background:var(--panel-2);}
+
+  #console-wrap{
+    flex:1;
+    min-height:0;
+    background:var(--panel-2);
+    display:flex;
+    flex-direction:column;
+  }
+  #console{
+    flex:1;
+    overflow-y:auto;
+    padding:16px 18px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:13.5px;
+    line-height:1.6;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .line-out{color:var(--ink);}
+  .line-err{color:var(--err);}
+  .line-sys{color:var(--ink-dim); font-style:italic;}
+  .ai-block{
+    margin:12px 0;
+    padding:12px 14px;
+    border-left:2px solid var(--violet);
+    background:#1c1830;
+    color:#dcd7ff;
+    border-radius:0 8px 8px 0;
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13.5px;
+    line-height:1.55;
+  }
+  #graphics-wrap{
+    flex:1;
+    min-height:0;
+    display:none;
+    background:radial-gradient(ellipse at 50% 40%, #241d30, var(--panel-2));
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+    padding:20px;
+  }
+  #graphics-wrap.active{display:flex;}
+  #console-wrap.hidden{display:none;}
+  canvas#tcanvas{
+    background:var(--paper);
+    border-radius:10px;
+    box-shadow:0 12px 40px rgba(0,0,0,.45), 0 0 0 1px rgba(0,0,0,.15);
+    touch-action:none;
+    cursor:grab;
+  }
+  canvas#tcanvas:active{cursor:grabbing;}
+
+  #graphics-wrap{position:relative;}
+  #zoom-controls{
+    position:absolute;
+    right:28px;
+    bottom:28px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+    background:rgba(30,23,41,.85);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:8px 6px;
+    -webkit-backdrop-filter:blur(6px);
+    backdrop-filter:blur(6px);
+    box-shadow:0 6px 20px rgba(0,0,0,.35);
+    z-index:5;
+  }
+  #zoom-controls button{
+    width:34px;
+    height:34px;
+    border-radius:8px;
+    border:1px solid var(--line);
+    background:#241b30;
+    color:var(--ink);
+    font-size:17px;
+    font-weight:600;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    transition:border-color .15s, background .15s, transform .1s;
+    font-family:'Space Grotesk',sans-serif;
+  }
+  #zoom-controls button:hover{border-color:var(--coral); background:#2c2138;}
+  #zoom-controls button:active{transform:translateY(1px);}
+  #zoom-controls #zoomReset{font-size:15px;}
+  #zoomLevel{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    color:var(--ink-dim);
+    padding:2px 0;
+    user-select:none;
+  }
+
+  ::-webkit-scrollbar{width:10px;}
+  ::-webkit-scrollbar-thumb{background:var(--line); border-radius:5px;}
+
+  .CodeMirror-hints{
+    font-family:'JetBrains Mono',monospace !important;
+    font-size:13px;
+    background:#241b30 !important;
+    border:1px solid var(--line) !important;
+    color:var(--ink) !important;
+    box-shadow:0 8px 24px rgba(0,0,0,.4) !important;
+  }
+  .CodeMirror-hint{padding:5px 12px !important;}
+  li.CodeMirror-hint-active{background:var(--coral) !important; color:#2a0f02 !important;}
+
+  /* ---------- key bar + mobile nav (hidden on desktop) ---------- */
+  #keybar{display:none;}
+  #mobilenav{display:none;}
+  .kb{
+    flex:0 0 auto;
+    min-width:38px;
+    height:38px;
+    background:#241b30;
+    border:1px solid var(--line);
+    border-radius:8px;
+    color:var(--ink);
+    font-family:'JetBrains Mono',monospace;
+    font-size:16px;
+    cursor:pointer;
+  }
+  .kb:active{background:var(--coral-dim);}
+  .navbtn{
+    flex:1;
+    background:transparent;
+    border:none;
+    color:var(--ink-dim);
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px;
+    font-weight:500;
+    padding:11px 4px;
+    border-radius:9px;
+    cursor:pointer;
+  }
+  .navbtn.active{color:var(--ink); background:#241b30;}
+
+  /* ---------- iPhone (both orientations) and narrow iPad Split View ----------
+     Width alone is not enough: an iPhone in landscape is ~850pt wide but only
+     ~390pt tall, where a side-by-side split leaves no usable editor. ---------- */
+  @media (max-width:700px), (max-height:500px){
+    #toolbar{padding:9px 12px; padding-top:calc(9px + env(safe-area-inset-top)); gap:6px;}
+    #logo{display:none;}
+    button.tool{padding:8px 11px; font-size:13px; flex:1 1 auto; justify-content:center;}
+    button#keyBtn{flex:0 0 auto;}
+    .sep{display:none;}
+
+    #editor-pane,#right-pane{width:100%; border-right:none;}
+    #tabs{display:none;}
+    body:not(.view-code) #editor-pane{display:none;}
+    body.view-code #right-pane{display:none;}
+
+    /* 16px is the threshold below which iOS zooms the page on focus */
+    .CodeMirror{font-size:16px;}
+    #console{font-size:14px; padding:14px;}
+    #graphics-wrap{padding:10px;}
+
+    #keybar{
+      display:none;
+      gap:6px;
+      padding:7px 10px;
+      background:var(--panel);
+      border-top:1px solid var(--line);
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+      scrollbar-width:none;
+      flex-shrink:0;
+    }
+    #keybar::-webkit-scrollbar{display:none;}
+    body.view-code #keybar{display:flex;}
+
+    #mobilenav{
+      display:flex;
+      gap:4px;
+      padding:6px 10px;
+      padding-bottom:calc(6px + env(safe-area-inset-bottom));
+      padding-left:calc(10px + env(safe-area-inset-left));
+      padding-right:calc(10px + env(safe-area-inset-right));
+      background:linear-gradient(0deg,#150f1d,#1c1526);
+      border-top:1px solid var(--line);
+      flex-shrink:0;
+    }
+  }
+
+  @media (max-height:500px){
+    #toolbar{padding:6px 10px; padding-top:calc(6px + env(safe-area-inset-top)); gap:5px; flex-wrap:nowrap; overflow-x:auto;}
+    button.tool{padding:6px 10px; font-size:12.5px; flex:0 0 auto;}
+    .kb{height:32px; min-width:34px; font-size:15px;}
+    #keybar{padding:5px 10px;}
+    .navbtn{padding:7px 4px; font-size:12.5px;}
+  }
+
+  /* ---------- iPad portrait & landscape keep the split view ---------- */
+  @media (min-width:701px) and (min-height:501px){
+    #main{
+      padding-left:env(safe-area-inset-left);
+      padding-right:env(safe-area-inset-right);
+      padding-bottom:env(safe-area-inset-bottom);
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <div id="logo"><span class="dot"></span>Pocket<span>Python</span></div>
+  <input type="file" id="fileInput" accept=".py,text/x-python,text/plain" style="display:none">
+  <button class="tool" id="openBtn">📂 Открыть</button>
+  <button class="tool" id="saveBtn">⬇ Сохранить</button>
+  <div class="sep"></div>
+  <button class="tool" id="aicheck">✦ Проверить с ИИ</button>
+  <button class="tool" id="keyBtn" title="API-ключ Anthropic">🔑</button>
+  <button class="tool" id="run">▶ Запустить</button>
+</div>
+
+<div id="main">
+  <div id="editor-pane"><textarea id="editor"></textarea></div>
+  <div id="right-pane">
+    <div id="tabs">
+      <button class="tabbtn active" id="tab-console">Консоль</button>
+      <button class="tabbtn" id="tab-graphics">Графика</button>
+    </div>
+    <div id="console-wrap"><div id="console"></div></div>
+    <div id="graphics-wrap">
+      <canvas id="tcanvas" width="600" height="600"></canvas>
+      <div id="zoom-controls">
+        <button id="zoomIn" title="Приблизить">+</button>
+        <div id="zoomLevel">100%</div>
+        <button id="zoomOut" title="Отдалить">−</button>
+        <button id="zoomReset" title="Сбросить масштаб">⤾</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- iOS software keyboards have no Tab or bracket row, so Python indentation is
+     unreachable without these. Touch/narrow layouts only. -->
+<div id="keybar">
+  <button class="kb" data-cmd="indent" title="Отступ">⇥</button>
+  <button class="kb" data-cmd="dedent" title="Убрать отступ">⇤</button>
+  <button class="kb" data-ins=":">:</button>
+  <button class="kb" data-ins="(">(</button>
+  <button class="kb" data-ins=")">)</button>
+  <button class="kb" data-ins="[">[</button>
+  <button class="kb" data-ins="]">]</button>
+  <button class="kb" data-ins="&quot;">"</button>
+  <button class="kb" data-ins="=">=</button>
+  <button class="kb" data-ins=",">,</button>
+  <button class="kb" data-ins=".">.</button>
+  <button class="kb" data-ins="_">_</button>
+  <button class="kb" data-ins="#">#</button>
+  <button class="kb" data-cmd="left" title="Влево">←</button>
+  <button class="kb" data-cmd="right" title="Вправо">→</button>
+</div>
+
+<nav id="mobilenav">
+  <button class="navbtn active" data-view="code">Код</button>
+  <button class="navbtn" data-view="console">Консоль</button>
+  <button class="navbtn" data-view="graphics">Графика</button>
+</nav>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+// ---------- editor ----------
+const WORDS = [
+  "print(","input(","len(","range(","int(","float(","str(","list(","dict(","set(","tuple(",
+  "for","while","if","elif","else","def","return","import","from","as","class","break","continue",
+  "True","False","None","and","or","not","in","is","try","except","finally","with","lambda","pass",
+  "turtle.forward(","turtle.backward(","turtle.left(","turtle.right(","turtle.penup(","turtle.pendown(",
+  "turtle.goto(","turtle.color(","turtle.pencolor(","turtle.fillcolor(","turtle.pensize(","turtle.speed(",
+  "turtle.circle(","turtle.begin_fill(","turtle.end_fill(","turtle.write(","turtle.home(","turtle.clear(",
+  "turtle.bgcolor(","turtle.done()","turtle.Turtle()","turtle.Screen()",
+  "Turtle()","forward(","backward(","left(","right(","penup(","pendown(","goto(","circle(","speed(",
+  "range(","append(","abs(","sum(","min(","max(","sorted(","enumerate(","zip(","map(","filter("
+];
+function customHint(cm){
+  const cur = cm.getCursor();
+  const line = cm.getLine(cur.line);
+  let start = cur.ch, end = cur.ch;
+  while(start && /[\w.]/.test(line.charAt(start-1))) start--;
+  const word = line.slice(start,end);
+  if(!word) return null;
+  const list = WORDS.filter(w=>w.startsWith(word) && w!==word);
+  if(!list.length) return null;
+  return {list, from: CodeMirror.Pos(cur.line,start), to: CodeMirror.Pos(cur.line,end)};
+}
+
+const editorTextarea = document.getElementById('editor');
+editorTextarea.setAttribute('autocapitalize','off');
+editorTextarea.setAttribute('autocorrect','off');
+editorTextarea.setAttribute('autocomplete','off');
+editorTextarea.setAttribute('spellcheck','false');
+
+const cm = CodeMirror.fromTextArea(editorTextarea,{
+  mode:'python',
+  theme:'dracula',
+  lineNumbers:true,
+  indentUnit:4,
+  tabSize:4,
+  indentWithTabs:false,
+  extraKeys:{"Ctrl-Space":"autocomplete"},
+});
+// CodeMirror 5 switches to a contenteditable input on touch devices; iOS still
+// applies autocapitalisation and smart quotes to it unless told otherwise.
+(function(){
+  const input = cm.getWrapperElement().querySelector('[contenteditable], textarea');
+  if(input){
+    input.setAttribute('autocapitalize','off');
+    input.setAttribute('autocorrect','off');
+    input.setAttribute('spellcheck','false');
+  }
+})();
+cm.setValue(
+`import turtle
+
+t = turtle.Turtle()
+t.color("#ff7a45")
+for i in range(4):
+    t.forward(120)
+    t.right(90)
+turtle.done()
+`);
+cm.on('inputRead', function(cm, change){
+  if(change.text[0] && /[\w.]/.test(change.text[0])){
+    CodeMirror.showHint(cm, customHint, {completeSingle:false});
+  }
+});
+
+// ---------- open / save ----------
+const fileInput = document.getElementById('fileInput');
+const openBtn = document.getElementById('openBtn');
+const saveBtn = document.getElementById('saveBtn');
+let currentFileName = 'program.py';
+
+openBtn.onclick = () => fileInput.click();
+fileInput.onchange = () => {
+  const file = fileInput.files[0];
+  if(!file) return;
+  currentFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = () => {
+    cm.setValue(reader.result);
+    logLine('Файл «'+file.name+'» загружен.','line-sys');
+  };
+  reader.onerror = () => logLine('Не удалось прочитать файл.','line-err');
+  reader.readAsText(file);
+  fileInput.value = '';
+};
+
+saveBtn.onclick = () => {
+  const blob = new Blob([cm.getValue()], {type:'text/x-python'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = currentFileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
+// ---------- tabs ----------
+const tabConsole = document.getElementById('tab-console');
+const tabGraphics = document.getElementById('tab-graphics');
+const consoleWrap = document.getElementById('console-wrap');
+const graphicsWrap = document.getElementById('graphics-wrap');
+function showTab(which){
+  // Reveal the pane first: on phones #right-pane is display:none while the code
+  // view is up, and measuring a hidden element collapses the canvas to its floor.
+  syncMobileNav(which);
+  if(which==='console'){
+    tabConsole.classList.add('active'); tabGraphics.classList.remove('active');
+    consoleWrap.classList.remove('hidden'); graphicsWrap.classList.remove('active');
+  } else {
+    tabGraphics.classList.add('active'); tabConsole.classList.remove('active');
+    consoleWrap.classList.add('hidden'); graphicsWrap.classList.add('active');
+    resizeCanvas();
+  }
+}
+tabConsole.onclick=()=>showTab('console');
+tabGraphics.onclick=()=>showTab('graphics');
+
+// ---------- console ----------
+const consoleEl = document.getElementById('console');
+function logLine(text, cls){
+  const div = document.createElement('div');
+  div.className = cls;
+  div.textContent = text;
+  consoleEl.appendChild(div);
+  consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+function clearConsole(){ consoleEl.innerHTML=''; }
+
+// ---------- turtle canvas engine (with pan & zoom) ----------
+const canvas = document.getElementById('tcanvas');
+const ctx = canvas.getContext('2d');
+const zoomLevelEl = document.getElementById('zoomLevel');
+
+let bg = '#f6efdf';
+let drawOps = [];              // recorded turtle-space draw operations, replayed on zoom/pan/resize
+let scaleV = 1, offX = 0, offY = 0;
+const MIN_SCALE = 0.15, MAX_SCALE = 10;
+
+function worldToPx(x,y){ return [canvas.width/2 + offX + x*scaleV, canvas.height/2 + offY - y*scaleV]; }
+function pxToWorld(px,py){ return [(px - canvas.width/2 - offX)/scaleV, -(py - canvas.height/2 - offY)/scaleV]; }
+function updateTransform(){ ctx.setTransform(scaleV,0,0,-scaleV, canvas.width/2+offX, canvas.height/2+offY); }
+function updateZoomLabel(){ if(zoomLevelEl) zoomLevelEl.textContent = Math.round(scaleV*100)+'%'; }
+
+function niceGridStep(){
+  const targetPx = 46;
+  const raw = targetPx/scaleV;
+  const steps = [1,2,5,10,20,50,100,200,500,1000,2000,5000,10000];
+  for(const s of steps){ if(s>=raw) return s; }
+  return steps[steps.length-1];
+}
+
+function drawGrid(){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  const step = niceGridStep();
+  const [wx1,wy1] = pxToWorld(0,canvas.height);
+  const [wx2,wy2] = pxToWorld(canvas.width,0);
+  const startX = Math.floor(wx1/step)*step, endX = Math.ceil(wx2/step)*step;
+  const startY = Math.floor(wy1/step)*step, endY = Math.ceil(wy2/step)*step;
+  ctx.strokeStyle = 'rgba(23,18,32,0.09)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let x=startX; x<=endX; x+=step){ const [px] = worldToPx(x,0); ctx.moveTo(px+0.5,0); ctx.lineTo(px+0.5,canvas.height); }
+  for(let y=startY; y<=endY; y+=step){ const py = worldToPx(0,y)[1]; ctx.moveTo(0,py+0.5); ctx.lineTo(canvas.width,py+0.5); }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(23,18,32,0.25)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  const ax = worldToPx(0,0)[0], ay = worldToPx(0,0)[1];
+  ctx.moveTo(ax+0.5,0); ctx.lineTo(ax+0.5,canvas.height);
+  ctx.moveTo(0,ay+0.5); ctx.lineTo(canvas.width,ay+0.5);
+  ctx.stroke();
+}
+
+function drawWriteOp(op){
+  ctx.save();
+  ctx.setTransform(1,0,0,1,0,0);
+  const [px,py] = worldToPx(op.x, op.y);
+  ctx.fillStyle = op.color;
+  ctx.font = Math.max(8, op.size*scaleV) + 'px sans-serif';
+  ctx.fillText(op.text, px, py);
+  ctx.restore();
+}
+function drawOp(op){
+  if(op.type==='line'){
+    ctx.strokeStyle=op.color; ctx.lineWidth=op.width; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(op.x1,op.y1); ctx.lineTo(op.x2,op.y2); ctx.stroke();
+  } else if(op.type==='dot'){
+    ctx.fillStyle=op.color;
+    ctx.beginPath(); ctx.arc(op.x,op.y,op.size/2,0,Math.PI*2); ctx.fill();
+  } else if(op.type==='poly'){
+    if(op.pts.length<2) return;
+    ctx.fillStyle=op.color;
+    ctx.beginPath();
+    ctx.moveTo(op.pts[0][0],op.pts[0][1]);
+    for(let i=1;i<op.pts.length;i++) ctx.lineTo(op.pts[i][0],op.pts[i][1]);
+    ctx.closePath(); ctx.fill();
+  } else if(op.type==='write'){
+    drawWriteOp(op);
+  }
+}
+function render(){
+  drawGrid();
+  updateTransform();
+  for(const op of drawOps) drawOp(op);
+  updateZoomLabel();
+}
+
+function resizeCanvas(){
+  const w = graphicsWrap.clientWidth, h = graphicsWrap.clientHeight;
+  if(!w || !h) return;              // pane is hidden — keep the current size
+  const size = Math.max(200, Math.min(w,h) - 16);
+  if(canvas.width !== size){ canvas.width = size; canvas.height = size; }
+  render();
+}
+window.addEventListener('resize', resizeCanvas);
+
+window.turtleClear = function(){ drawOps = []; scaleV=1; offX=0; offY=0; render(); };
+window.turtleBg = function(color){ bg = color; render(); };
+window.turtleLine = function(x1,y1,x2,y2,color,width){
+  const op = {type:'line',x1,y1,x2,y2,color,width};
+  drawOps.push(op); drawOp(op);
+};
+window.turtleDot = function(x,y,size,color){
+  const op = {type:'dot',x,y,size,color};
+  drawOps.push(op); drawOp(op);
+};
+window.turtlePolygon = function(pts,color){
+  const op = {type:'poly',pts,color};
+  drawOps.push(op); drawOp(op);
+};
+window.turtleWrite = function(x,y,text,color,size){
+  const op = {type:'write',x,y,text,color,size};
+  drawOps.push(op); drawOp(op);
+};
+
+// ---------- zoom & pan ----------
+function zoomAt(px,py,factor){
+  if(!isFinite(factor) || factor <= 0) return;
+  const [wx,wy] = pxToWorld(px,py);
+  scaleV = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scaleV*factor));
+  offX = px - canvas.width/2 - wx*scaleV;
+  offY = py - canvas.height/2 + wy*scaleV;
+  render();
+}
+document.getElementById('zoomIn').onclick = () => zoomAt(canvas.width/2, canvas.height/2, 1.3);
+document.getElementById('zoomOut').onclick = () => zoomAt(canvas.width/2, canvas.height/2, 1/1.3);
+document.getElementById('zoomReset').onclick = () => { scaleV=1; offX=0; offY=0; render(); };
+
+canvas.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
+  zoomAt(e.clientX-rect.left, e.clientY-rect.top, factor);
+}, {passive:false});
+
+function touchDist(t1,t2){ const dx=t1.clientX-t2.clientX, dy=t1.clientY-t2.clientY; return Math.hypot(dx,dy); }
+let touchState = null;
+canvas.addEventListener('touchstart', (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  if(e.touches.length===2){
+    const [t1,t2] = e.touches;
+    touchState = {mode:'pinch', dist: touchDist(t1,t2),
+      midX:(t1.clientX+t2.clientX)/2-rect.left, midY:(t1.clientY+t2.clientY)/2-rect.top};
+  } else if(e.touches.length===1){
+    touchState = {mode:'pan', x:e.touches[0].clientX-rect.left, y:e.touches[0].clientY-rect.top};
+  }
+}, {passive:true});
+canvas.addEventListener('touchmove', (e)=>{
+  if(!touchState) return;
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  if(touchState.mode==='pinch' && e.touches.length===2){
+    const [t1,t2] = e.touches;
+    const dist = touchDist(t1,t2);
+    if(dist > 0 && touchState.dist > 0){
+      zoomAt(touchState.midX, touchState.midY, dist/touchState.dist);
+      touchState.dist = dist;
+    }
+  } else if(touchState.mode==='pan' && e.touches.length===1){
+    const x = e.touches[0].clientX-rect.left, y = e.touches[0].clientY-rect.top;
+    offX += x-touchState.x; offY += y-touchState.y;
+    touchState.x = x; touchState.y = y;
+    render();
+  }
+}, {passive:false});
+canvas.addEventListener('touchend', ()=>{ touchState = null; });
+
+let dragState = null;
+canvas.addEventListener('mousedown', (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  dragState = {x:e.clientX-rect.left, y:e.clientY-rect.top};
+});
+window.addEventListener('mousemove', (e)=>{
+  if(!dragState) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX-rect.left, y = e.clientY-rect.top;
+  offX += x-dragState.x; offY += y-dragState.y;
+  dragState.x = x; dragState.y = y;
+  render();
+});
+window.addEventListener('mouseup', ()=>{ dragState = null; });
+
+// ---------- pyodide python turtle shim ----------
+// bridge names must NOT start with a double underscore — inside a Python
+// class body "__name" gets private-name-mangled to "_ClassName__name",
+// which silently breaks js.__name(...) calls.
+const TURTLE_SHIM = `
+import js, math, time
+
+class Turtle:
+    def __init__(self):
+        self.x = 0.0
+        self.y = 0.0
+        self.heading_deg = 0.0
+        self.down = True
+        self._color = "black"
+        self._fill = "black"
+        self._width = 1
+        self._speed = 6
+        self._filling = False
+        self._fillpts = []
+
+    def _delay(self):
+        # Pyodide runs on the main thread: time.sleep() freezes the page and the
+        # canvas does not repaint until the whole program finishes, so a delay
+        # here buys no animation — only a hang. speed() stays a no-op accessor
+        # so that existing turtle programs keep running unchanged.
+        pass
+
+    def forward(self, dist):
+        rad = math.radians(self.heading_deg)
+        nx = self.x + dist*math.cos(rad)
+        ny = self.y + dist*math.sin(rad)
+        if self.down:
+            js.turtleLine(self.x, self.y, nx, ny, self._color, self._width)
+        if self._filling: self._fillpts.append((nx,ny))
+        self.x, self.y = nx, ny
+        self._delay()
+    fd = forward
+
+    def backward(self, dist): self.forward(-dist)
+    bk = backward
+    back = backward
+
+    def left(self, deg):
+        self.heading_deg = (self.heading_deg + deg) % 360
+        self._delay()
+    lt = left
+
+    def right(self, deg):
+        self.heading_deg = (self.heading_deg - deg) % 360
+        self._delay()
+    rt = right
+
+    def penup(self): self.down = False
+    pu = penup
+    up = penup
+
+    def pendown(self): self.down = True
+    pd = pendown
+
+    def goto(self, x, y=None):
+        if y is None and isinstance(x,(tuple,list)):
+            x, y = x[0], x[1]
+        if self.down:
+            js.turtleLine(self.x, self.y, x, y, self._color, self._width)
+        if self._filling: self._fillpts.append((x,y))
+        self.x, self.y = float(x), float(y)
+    setpos = goto
+    setposition = goto
+
+    def setx(self, x): self.goto(x, self.y)
+    def sety(self, y): self.goto(self.x, y)
+
+    def setheading(self, deg): self.heading_deg = deg % 360
+    seth = setheading
+
+    def home(self): self.goto(0,0); self.heading_deg = 0
+
+    def color(self, c, c2=None):
+        self._color = c
+        self._fill = c2 if c2 else c
+    def pencolor(self, c): self._color = c
+    def fillcolor(self, c): self._fill = c
+
+    def pensize(self, w): self._width = w
+    width = pensize
+
+    def speed(self, s=None):
+        if s is not None: self._speed = s if isinstance(s,int) else 6
+
+    def circle(self, radius, extent=360, steps=None):
+        steps = steps or max(12, int(abs(extent)/6))
+        step_len = 2*math.pi*abs(radius)*(extent/360)/steps
+        angle_step = extent/steps
+        sign = 1 if radius > 0 else -1
+        for _ in range(steps):
+            self.forward(step_len)
+            self.left(angle_step*sign)
+
+    def begin_fill(self):
+        self._filling = True
+        self._fillpts = [(self.x, self.y)]
+    def end_fill(self):
+        self._filling = False
+        if len(self._fillpts) > 2:
+            js.turtlePolygon(self._fillpts, self._fill)
+        self._fillpts = []
+
+    def dot(self, size=8, color=None):
+        js.turtleDot(self.x, self.y, size, color or self._color)
+
+    def write(self, text, move=False, align="left", font=("Arial",12,"normal")):
+        size = font[1] if isinstance(font,(tuple,list)) and len(font)>1 else 12
+        js.turtleWrite(self.x, self.y, str(text), self._color, size)
+
+    def clear(self): js.turtleClear()
+    def reset(self):
+        js.turtleClear()
+        self.__init__()
+
+    def hideturtle(self): pass
+    ht = hideturtle
+    def showturtle(self): pass
+    st = showturtle
+
+class _Screen:
+    def bgcolor(self, c): js.turtleBg(c)
+    def title(self, t): pass
+    def clear(self): js.turtleClear()
+    def done(self): pass
+    def mainloop(self): pass
+    def exitonclick(self): pass
+    def setup(self, *a, **k): pass
+
+_default = Turtle()
+Screen = _Screen
+
+def forward(d): _default.forward(d)
+def backward(d): _default.backward(d)
+def left(a): _default.left(a)
+def right(a): _default.right(a)
+def penup(): _default.penup()
+def pendown(): _default.pendown()
+def goto(x,y=None): _default.goto(x,y)
+def setpos(x,y=None): _default.goto(x,y)
+def color(c,c2=None): _default.color(c,c2)
+def pencolor(c): _default.pencolor(c)
+def fillcolor(c): _default.fillcolor(c)
+def pensize(w): _default.pensize(w)
+def speed(s=None): _default.speed(s)
+def circle(r,extent=360,steps=None): _default.circle(r,extent,steps)
+def begin_fill(): _default.begin_fill()
+def end_fill(): _default.end_fill()
+def dot(size=8,color=None): _default.dot(size,color)
+def write(text,move=False,align="left",font=("Arial",12,"normal")): _default.write(text,move,align,font)
+def home(): _default.home()
+def clear(): js.turtleClear()
+def reset(): js.turtleClear()
+def bgcolor(c): js.turtleBg(c)
+def hideturtle(): pass
+def showturtle(): pass
+def done(): pass
+def mainloop(): pass
+def exitonclick(): pass
+def title(t): pass
+def setup(*a,**k): pass
+`;
+
+// ---------- pyodide runtime ----------
+// Must match the <script> tag above: pyodide.js resolves its .wasm/.data
+// siblings relative to indexURL, so a mismatch fails at load time.
+const PYODIDE_INDEX_URL = 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/';
+let pyodideReady = null;
+async function getPyodide(){
+  if(!pyodideReady){
+    pyodideReady = (async ()=>{
+      if(typeof loadPyodide !== 'function'){
+        throw new Error('Не загрузился движок Python (pyodide.js). Проверьте интернет и обновите страницу.');
+      }
+      logLine('Загружаю среду выполнения Python…','line-sys');
+      const py = await loadPyodide({ indexURL: PYODIDE_INDEX_URL });
+      // `js` must be imported explicitly — it is not a builtin inside Pyodide.
+      await py.runPythonAsync(`
+import sys, builtins, js
+
+class _Out:
+    def __init__(self, kind): self.kind = kind
+    def write(self, s):
+        if s: js.pyWrite(s, self.kind)
+        return len(s) if s else 0
+    def flush(self): pass
+
+sys.stdout = _Out('out')
+sys.stderr = _Out('err')
+
+def _input(prompt=''):
+    if prompt: js.pyWrite(str(prompt), 'out')
+    answer = js.pyInput(str(prompt))
+    if answer is None:
+        raise EOFError('Ввод отменён')
+    js.pyWrite(str(answer) + '\\n', 'out')
+    return str(answer)
+
+builtins.input = _input
+`);
+      py.FS.mkdirTree('/turtlemod');
+      py.FS.writeFile('/turtlemod/turtle.py', TURTLE_SHIM);
+      py.runPython(`import sys; sys.path.insert(0,'/turtlemod')`);
+      logLine('Готово. Можно запускать код.','line-sys');
+      return py;
+    })();
+  }
+  return pyodideReady;
+}
+window.pyWrite = function(text, kind){
+  logLine(text.replace(/\n$/,''), kind==='err' ? 'line-err' : 'line-out');
+};
+window.pyInput = function(promptText){
+  // Some embedded webviews block prompt(); returning null makes Python raise a
+  // clean EOFError instead of an unhandled JS exception.
+  try{
+    return window.prompt(promptText || 'Введите значение:');
+  }catch(e){
+    logLine('Ввод с клавиатуры недоступен в этом браузере.','line-err');
+    return null;
+  }
+};
+
+const runBtn = document.getElementById('run');
+const aiBtn = document.getElementById('aicheck');
+
+let lastError = '';
+runBtn.onclick = async function(){
+  runBtn.disabled = true;
+  clearConsole();
+  lastError = '';
+  try{
+    const py = await getPyodide();
+    const code = cm.getValue();
+    const usesTurtle = /turtle\.|import turtle|Turtle\(\)/.test(code);
+    if(usesTurtle){
+      showTab('graphics');
+    } else {
+      if(window.turtleClear) window.turtleClear();
+      showTab('console');
+    }
+    try{
+      await py.runPythonAsync(code);
+      logLine('— выполнено —','line-sys');
+    }catch(e){
+      lastError = cleanTraceback(e.message || String(e));
+      logLine(lastError, 'line-err');
+      showTab('console');
+    }
+  }catch(e){
+    logLine('Ошибка среды: '+e.message,'line-err');
+  }
+  runBtn.disabled = false;
+};
+
+// ---------- typewriter-style code fix ----------
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+async function animateReplace(newFullCode){
+  const old = cm.getValue();
+  if(old === newFullCode) return;
+  let p = 0;
+  const maxP = Math.min(old.length, newFullCode.length);
+  while(p < maxP && old[p] === newFullCode[p]) p++;
+  let sOld = old.length, sNew = newFullCode.length;
+  while(sOld > p && sNew > p && old[sOld-1] === newFullCode[sNew-1]){ sOld--; sNew--; }
+  const oldMiddleLen = sOld - p;
+  const newMiddle = newFullCode.slice(p, sNew);
+  const totalChars = oldMiddleLen + newMiddle.length || 1;
+  const delay = Math.max(5, Math.min(30, 2000 / totalChars));
+
+  document.getElementById('editor-pane').classList.add('cm-fixing');
+  cm.focus();
+
+  for(let remaining = oldMiddleLen; remaining > 0; remaining--){
+    const from = cm.posFromIndex(p + remaining - 1);
+    const to = cm.posFromIndex(p + remaining);
+    cm.replaceRange('', from, to);
+    cm.setCursor(from);
+    cm.scrollIntoView(from, 80);
+    await sleep(delay);
+  }
+  for(let i = 0; i < newMiddle.length; i++){
+    const pos = cm.posFromIndex(p + i);
+    cm.replaceRange(newMiddle[i], pos);
+    const after = cm.posFromIndex(p + i + 1);
+    cm.setCursor(after);
+    cm.scrollIntoView(after, 80);
+    await sleep(delay);
+  }
+  document.getElementById('editor-pane').classList.remove('cm-fixing');
+}
+
+// ---------- AI check + auto-fix ----------
+// The Anthropic API is called straight from the page, so it needs a key stored
+// on this device. anthropic-dangerous-direct-browser-access opts the request
+// into CORS from a browser origin; the key is visible to anything running on
+// this page, so use a key you are willing to expose (see README note).
+const AI_MODEL = 'claude-opus-5';
+const KEY_STORAGE = 'pocketpython.anthropicKey';
+
+function getApiKey(){
+  try { return localStorage.getItem(KEY_STORAGE) || ''; } catch(e){ return ''; }
+}
+function askApiKey(){
+  const current = getApiKey();
+  let entered;
+  try{
+    entered = window.prompt(
+      'Введите API-ключ Anthropic (sk-ant-…).\nОставьте поле пустым, чтобы удалить сохранённый ключ.',
+      current
+    );
+  }catch(e){
+    logLine('Этот браузер не показывает диалог ввода — откройте приложение в Safari.','line-err');
+    return current;
+  }
+  if(entered === null || entered === undefined) return current;
+  const key = entered.trim();
+  try{
+    if(key) localStorage.setItem(KEY_STORAGE, key);
+    else localStorage.removeItem(KEY_STORAGE);
+  }catch(e){
+    logLine('Не удалось сохранить ключ в этом браузере.','line-err');
+  }
+  logLine(key ? 'Ключ сохранён.' : 'Ключ удалён.','line-sys');
+  return key;
+}
+document.getElementById('keyBtn').onclick = () => askApiKey();
+
+const AI_SCHEMA = {
+  type: "object",
+  properties: {
+    ok: { type: "boolean" },
+    comment: { type: "string" },
+    fixed_code: { type: ["string", "null"] }
+  },
+  required: ["ok", "comment", "fixed_code"],
+  additionalProperties: false
+};
+
+// Server-side refusal fallbacks need a beta flag. If this account or endpoint
+// does not accept it, retry once without it rather than losing the feature.
+async function callAnthropic(key, body){
+  const send = (payload, beta) => fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: Object.assign({
+      "content-type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      // Opts this cross-origin request into CORS; without it the browser blocks it.
+      "anthropic-dangerous-direct-browser-access": "true"
+    }, beta ? {"anthropic-beta": beta} : {}),
+    body: JSON.stringify(payload)
+  });
+
+  const resp = await send(body, "server-side-fallback-2026-07-01");
+  if(resp.status !== 400) return resp;
+
+  const text = await resp.clone().text();
+  if(!/fallback|beta/i.test(text)) return resp;
+  const retry = Object.assign({}, body);
+  delete retry.fallbacks;
+  return send(retry, null);
+}
+
+aiBtn.onclick = async function(){
+  let key = getApiKey();
+  if(!key){
+    showTab('console');
+    logLine('Для проверки нужен API-ключ Anthropic.','line-sys');
+    key = askApiKey();
+    if(!key) return;
+  }
+
+  aiBtn.disabled = true;
+  showTab('console');
+  logLine('Спрашиваю ИИ…','line-sys');
+  const code = cm.getValue();
+  try{
+    const resp = await callAnthropic(key, {
+        model: AI_MODEL,
+        max_tokens: 16000,
+        fallbacks: "default",
+        output_config: {
+          effort: "medium",
+          format: { type: "json_schema", schema: AI_SCHEMA }
+        },
+        system:
+`Ты — ассистент проверки Python-кода для новичка. Код может использовать модуль turtle.
+Проверь код на ошибки: синтаксис, логика, опечатки в командах turtle.
+В поле comment дай краткий комментарий на русском, максимум 4 предложения.
+В fixed_code верни полный исправленный код целиком, если нашёл ошибку, иначе null.
+Если код и так рабочий — ok:true, fixed_code:null, а в comment дай один короткий совет по улучшению.`,
+        messages: [{
+          role: "user",
+          content:
+`Вот код:
+
+${code}
+
+${lastError ? "Последняя ошибка при запуске:\n" + lastError : "Ошибок при запуске не было."}`
+        }]
+    });
+
+    if(!resp.ok){
+      let detail = 'HTTP ' + resp.status;
+      try{
+        const err = await resp.json();
+        if(err && err.error && err.error.message) detail = err.error.message;
+      }catch(e){}
+      logLine(resp.status === 401
+        ? 'Ключ не принят: ' + detail + ' — нажмите 🔑, чтобы ввести другой.'
+        : 'ИИ ответил ошибкой: ' + detail, 'line-err');
+      return;
+    }
+
+    const data = await resp.json();
+    if(data.stop_reason === 'refusal'){
+      logLine('ИИ отказался отвечать на этот запрос.','line-err');
+      return;
+    }
+
+    const raw = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text||'').join('').trim();
+    let parsed;
+    try{ parsed = JSON.parse(raw); }
+    catch(e){ parsed = {ok:true, comment: raw || 'Не удалось разобрать ответ.', fixed_code: null}; }
+
+    const div = document.createElement('div');
+    div.className = 'ai-block';
+    div.textContent = '✦ ИИ: ' + (parsed.comment || '');
+    consoleEl.appendChild(div);
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+
+    if(parsed.fixed_code && typeof parsed.fixed_code === 'string' && parsed.fixed_code.trim() !== code.trim()){
+      logLine('Переписываю код…','line-sys');
+      await animateReplace(parsed.fixed_code);
+      logLine('Код обновлён — можно запустить снова.','line-sys');
+    }
+  }catch(e){
+    logLine('Не удалось связаться с ИИ: '+e.message,'line-err');
+  }finally{
+    aiBtn.disabled = false;
+  }
+};
+
+// ---------- traceback cleanup ----------
+// Pyodide prefixes every error with its own frames (/lib/python312.zip, _pyodide);
+// a beginner only needs the frame inside their own program.
+function cleanTraceback(msg){
+  const text = String(msg).replace(/\nPythonError\s*$/,'').trimEnd();
+  const lines = text.split('\n');
+  const i = lines.findIndex(l => l.includes('File "<exec>"'));
+  if(i === -1) return text;
+  return ['Traceback (последний вызов):', ...lines.slice(i)].join('\n');
+}
+
+// ---------- mobile layout (iPhone / narrow Split View) ----------
+const mobileNav = document.getElementById('mobilenav');
+const keybar = document.getElementById('keybar');
+
+function syncMobileNav(which){
+  const view = which === 'graphics' ? 'graphics' : 'console';
+  document.body.classList.remove('view-code');
+  mobileNav.querySelectorAll('.navbtn').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === view);
+  });
+}
+
+function setView(view){
+  if(view === 'code'){
+    document.body.classList.add('view-code');
+    mobileNav.querySelectorAll('.navbtn').forEach(b => {
+      b.classList.toggle('active', b.dataset.view === 'code');
+    });
+    cm.refresh();
+  } else {
+    showTab(view === 'graphics' ? 'graphics' : 'console');
+  }
+}
+
+mobileNav.addEventListener('click', (e) => {
+  const btn = e.target.closest('.navbtn');
+  if(btn) setView(btn.dataset.view);
+});
+
+// The key bar must not steal focus, or iOS dismisses the keyboard on every tap.
+keybar.addEventListener('mousedown', (e) => e.preventDefault());
+keybar.addEventListener('touchstart', (e) => e.preventDefault(), {passive:false});
+keybar.addEventListener('click', (e) => {
+  const btn = e.target.closest('.kb');
+  if(!btn) return;
+  cm.focus();
+  const cmd = btn.dataset.cmd;
+  if(cmd === 'indent'){
+    if(cm.somethingSelected()) cm.execCommand('indentMore');
+    else cm.replaceSelection('    ');
+  } else if(cmd === 'dedent'){
+    cm.execCommand('indentLess');
+  } else if(cmd === 'left'){
+    cm.execCommand('goCharLeft');
+  } else if(cmd === 'right'){
+    cm.execCommand('goCharRight');
+  } else if(btn.dataset.ins != null){
+    cm.replaceSelection(btn.dataset.ins);
+  }
+});
+
+document.body.classList.add('view-code');
+setView('code');
+window.addEventListener('orientationchange', () => {
+  setTimeout(() => { cm.refresh(); resizeCanvas(); }, 250);
+});
+
+// init
+logLine('Нажмите «Запустить», чтобы выполнить код.','line-sys');
+
+// ---------- PWA ----------
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
