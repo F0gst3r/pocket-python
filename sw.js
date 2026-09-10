@@ -1,8 +1,9 @@
-const SHELL_CACHE = 'pocket-python-shell-v4';
-const RUNTIME_CACHE = 'pocket-python-runtime-v2';
+const SHELL_CACHE = 'pocket-python-shell-v5';
+const RUNTIME_CACHE = 'pocket-python-runtime-v3';
 const KEEP = [SHELL_CACHE, RUNTIME_CACHE];
 
-const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png',
+  './icon-maskable-192.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 // Third-party origins the app needs in order to run at all. Caching them is what
 // makes the installed iOS app work offline — Pyodide alone is several MB, so it
@@ -27,7 +28,10 @@ const PRECACHE_CDN = [
   CM + 'codemirror.min.css',
   CM + 'theme/dracula.min.css',
   CM + 'addon/hint/show-hint.min.css',
-  'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js'
+  'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js',
+  // Icon webfont CSS; the .woff2 it points at is cached on first fetch.
+  'https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css',
+  'https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css'
 ];
 
 self.addEventListener('install', (e) => {

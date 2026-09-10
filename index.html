@@ -6,7 +6,7 @@
 <title>Pocket Python</title>
 
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#171220">
+<meta name="theme-color" content="#161826">
 <link rel="icon" href="icon-192.png">
 <!-- iOS/iPadOS ignore the manifest icons for the home screen and use this one.
      It must be opaque: transparency is composited onto black. -->
@@ -18,26 +18,60 @@
 <meta name="format-detection" content="telephone=no">
 
 <link rel="stylesheet" crossorigin="anonymous" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
-<link rel="stylesheet" crossorigin="anonymous" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
 <link rel="stylesheet" crossorigin="anonymous" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" crossorigin="anonymous">
+<!-- Phosphor is the design system's icon set. Served from jsdelivr because the
+     service worker already caches that host, so offline keeps working. -->
+<link rel="stylesheet" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css">
 <style>
+  /* ---------- Nocturne tokens ----------
+     Values come from the design system (readme: --color-bg #161826,
+     --color-text #e9e9ed, accent #9184d9) and the redesign artboard. Nothing
+     below hard-codes a colour that is not a token. */
   :root{
-    --bg:#171220;
-    --panel:#1e1729;
-    --panel-2:#120d19;
-    --line:#362a41;
-    --line-soft:#2a2233;
-    --ink:#f2ece2;
-    --ink-dim:#a79ab0;
-    --coral:#ff7a45;
-    --coral-dim:#8a4527;
-    --violet:#9b8cff;
-    --violet-dim:#463f78;
-    --err:#ff6b7a;
-    --paper:#f6efdf;
+    --color-bg:#161826;
+    --color-bg-deep:#0f1018;
+    --color-surface:#232532;
+    --color-surface-2:#1b1d2c;
+    --color-line:#292b31;
+    --color-line-strong:#3f424d;
+
+    --color-text:#e9e9ed;
+    --color-text-2:#cfd3e5;
+    --color-text-3:#b2b6ca;
+    --color-muted:#9397ab;
+    --color-muted-2:#75798c;
+    --color-gutter:#595d6c;
+
+    --color-accent:#9184d9;
+    --color-accent-200:#e7e5fe;
+    --color-accent-300:#d2cefd;
+    --color-accent-400:#b5abfc;
+    --color-accent-700:#5d5294;
+    --color-accent-900:#2b2741;
+    --color-accent-kicker:#9690c9;
+
+    --color-err:#eba3ac;
+    --paper:#e4e7f5;
+
+    /* syntax */
+    --syn-keyword:#b5abfc;
+    --syn-module:#7fd1c4;
+    --syn-fn:#8fc7f2;
+    --syn-string:#dcbf82;
+    --syn-number:#eba3ac;
+
+    --font-body:'Inter',system-ui,-apple-system,sans-serif;
+    --font-mono:'JetBrains Mono',ui-monospace,monospace;
+
+    --radius:8px;
+    --radius-lg:14px;
+    --shadow-md:0 6px 18px rgba(0,0,0,.55);
+    --shadow-lg:0 16px 40px rgba(0,0,0,.65);
   }
+
   *{box-sizing:border-box;}
   html,body{
     height:100%;
@@ -50,9 +84,10 @@
     -webkit-text-size-adjust:100%;
   }
   body{
-    background:var(--bg);
-    color:var(--ink);
-    font-family:'Space Grotesk',system-ui,-apple-system,sans-serif;
+    background:var(--color-bg);
+    color:var(--color-text);
+    font-family:var(--font-body);
+    font-size:13px;
     display:flex;
     flex-direction:column;
     overflow:hidden;
@@ -60,292 +95,413 @@
     inset:0;
     -webkit-tap-highlight-color:transparent;
   }
-  button,.tabbtn{touch-action:manipulation;}
+  button{touch-action:manipulation; font-family:var(--font-body);}
+  /* The design system asks for a themed focus ring, never the browser default. */
+  :focus-visible{outline:2px solid var(--color-accent); outline-offset:2px;}
+  ::selection{background:var(--color-accent-900); color:var(--color-accent-200);}
+  .ph, .ph-fill{line-height:1; flex-shrink:0;}
+
+  /* ---------- toolbar ---------- */
   #toolbar{
     display:flex;
     align-items:center;
-    gap:8px;
-    padding:12px 16px;
+    gap:8.4px;
+    padding:11.2px 16.8px;
     /* black-translucent status bar draws under the page on iOS standalone */
-    padding-top:calc(12px + env(safe-area-inset-top));
-    padding-left:calc(16px + env(safe-area-inset-left));
-    padding-right:calc(16px + env(safe-area-inset-right));
-    background:linear-gradient(180deg,#1c1526,#150f1d);
-    border-bottom:1px solid var(--line);
+    padding-top:calc(11.2px + env(safe-area-inset-top));
+    padding-left:calc(16.8px + env(safe-area-inset-left));
+    padding-right:calc(16.8px + env(safe-area-inset-right));
+    background:var(--color-bg);
+    border-bottom:1px solid var(--color-line);
     flex-shrink:0;
-    flex-wrap:wrap;
   }
-  #logo{
+  #brand{display:flex; align-items:center; gap:8.4px; margin-right:16.8px;}
+  #brand svg{display:block; flex-shrink:0;}
+  .brand-name{font-size:14px; font-weight:500; letter-spacing:-0.01em; white-space:nowrap;}
+
+  #filechip{
     display:flex;
     align-items:center;
-    gap:8px;
-    font-weight:600;
-    font-size:15px;
-    color:var(--ink);
+    gap:5.6px;
+    padding:0 11.2px;
+    border-left:1px solid var(--color-line);
+    border-right:1px solid var(--color-line);
     margin-right:auto;
-    letter-spacing:0.2px;
+    min-width:0;
   }
-  #logo .dot{
-    width:9px;height:9px;border-radius:50%;
-    background:radial-gradient(circle at 30% 30%, #ffb187, var(--coral));
-    box-shadow:0 0 10px rgba(255,122,69,.55);
+  #filechip .ph{font-size:15px; color:var(--color-muted-2);}
+  #filename{
+    font-family:var(--font-mono);
+    font-size:12.5px;
+    color:var(--color-text-3);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  #dirtydot{
+    width:5px; height:5px; border-radius:50%;
+    background:var(--color-accent);
+    margin-left:2.8px;
     flex-shrink:0;
   }
-  #logo span{color:var(--ink-dim); font-weight:400;}
 
-  .sep{width:1px; align-self:stretch; background:var(--line); margin:0 2px;}
-
-  button.tool{
+  /* Outlined actions — the system never fills a primary button. */
+  .btn{
     display:flex;
     align-items:center;
-    gap:7px;
+    gap:5.6px;
     background:transparent;
-    border:1px solid var(--line);
-    color:var(--ink);
-    padding:8px 15px;
-    border-radius:9px;
-    font-family:'Space Grotesk',sans-serif;
-    font-size:13.5px;
-    font-weight:500;
-    cursor:pointer;
-    transition:border-color .15s, background .15s, transform .1s;
-    white-space:nowrap;
-  }
-  button.tool:hover{border-color:var(--line-soft); background:#241b30;}
-  button.tool:active{transform:translateY(1px);}
-  button#run{
-    background:linear-gradient(180deg,#ff8c5c,var(--coral));
-    border-color:transparent;
-    color:#2a0f02;
-    font-weight:600;
-    box-shadow:0 2px 14px rgba(255,122,69,.35);
-  }
-  button#run:hover{filter:brightness(1.07);}
-  button#run:disabled{opacity:.5; cursor:default; box-shadow:none;}
-  button#aicheck{color:#d8d2ff; border-color:var(--violet-dim);}
-  button#aicheck:hover{border-color:var(--violet); background:#211c37;}
-  button#aicheck:disabled{opacity:.5; cursor:default;}
-
-  #main{
-    flex:1;
-    display:flex;
-    min-height:0;
-  }
-  #editor-pane{
-    width:50%;
-    min-width:0;
-    border-right:1px solid var(--line);
-    display:flex;
-    flex-direction:column;
-    background:var(--bg);
-  }
-  .CodeMirror{
-    height:100% !important;
-    font-family:'JetBrains Mono',monospace !important;
-    font-size:14px;
-    background:var(--bg) !important;
-    padding-top:8px;
-  }
-  .CodeMirror-gutters{background:var(--bg) !important; border-right:1px solid var(--line-soft) !important;}
-  .CodeMirror-cursor{border-left:2px solid var(--coral) !important;}
-  .cm-fixing .CodeMirror-cursor{border-left:2px solid var(--violet) !important;}
-
-  #right-pane{
-    width:50%;
-    min-width:0;
-    display:flex;
-    flex-direction:column;
-    background:var(--panel);
-  }
-  #tabs{
-    display:flex;
-    gap:4px;
-    padding:10px 10px 0 10px;
-    flex-shrink:0;
-  }
-  .tabbtn{
-    background:transparent;
-    border:none;
-    color:var(--ink-dim);
-    padding:7px 15px;
-    font-family:'Space Grotesk',sans-serif;
+    border:1px solid var(--color-line-strong);
+    color:var(--color-text-2);
+    padding:6px 11.2px;
+    border-radius:var(--radius);
     font-size:13px;
     font-weight:500;
     cursor:pointer;
-    border-radius:7px 7px 0 0;
+    white-space:nowrap;
+    transition:border-color .15s, background .15s, color .15s;
+  }
+  .btn .ph, .btn .ph-fill{font-size:15px;}
+  .btn:hover{border-color:var(--color-accent-700); background:var(--color-accent-900);}
+  .btn:active{background:var(--color-accent-900); border-color:var(--color-accent);}
+  .btn:disabled{opacity:.45; cursor:default;}
+  .btn:disabled:hover{border-color:var(--color-line-strong); background:transparent;}
+
+  .btn-icon{
+    justify-content:center;
+    width:31px; height:31px;
+    padding:0;
+    color:var(--color-muted);
+  }
+  .btn-icon:hover{color:var(--color-text-2);}
+
+  .btn-ai{border-color:var(--color-accent-700); color:var(--color-accent-300);}
+  .btn-ai:hover{border-color:var(--color-accent); background:var(--color-accent-900);}
+
+  .btn-run{
+    border-color:var(--color-accent);
+    color:var(--color-accent-200);
+    padding:6px 16.8px;
+    box-shadow:0 0 18px rgba(145,132,217,.22);
+  }
+  .btn-run:hover{background:var(--color-accent-900); border-color:var(--color-accent-400);}
+  .btn-run .ph-fill{font-size:14px;}
+
+  #moreBtn{display:none;}
+  /* display:flex below would otherwise beat the UA's [hidden]{display:none} */
+  #moremenu[hidden]{display:none;}
+  #moremenu{
+    position:absolute;
+    top:calc(52px + env(safe-area-inset-top));
+    right:calc(12px + env(safe-area-inset-right));
+    z-index:40;
+    display:flex;
+    flex-direction:column;
+    gap:2.8px;
+    padding:5.6px;
+    background:var(--color-surface);
+    border:1px solid var(--color-line-strong);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow-lg);
+  }
+  #moremenu button{
+    display:flex; align-items:center; gap:8.4px;
+    background:transparent; border:none;
+    color:var(--color-text-2);
+    font-size:13px; font-weight:500;
+    padding:8px 11.2px;
+    border-radius:6px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  #moremenu button:hover{background:var(--color-accent-900); color:var(--color-text);}
+  #moremenu .ph{font-size:16px;}
+
+  /* ---------- layout ---------- */
+  #main{flex:1; display:flex; min-height:0;}
+  #editor-pane{
+    flex:1 1 58%;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    background:var(--color-bg);
+    border-right:1px solid var(--color-line);
+  }
+  #editor-host{flex:1; min-height:0;}
+
+  #statusbar{
+    display:flex;
+    align-items:center;
+    gap:16.8px;
+    padding:5.6px 16.8px;
+    border-top:1px solid var(--color-line);
+    font-family:var(--font-mono);
+    font-size:11px;
+    color:var(--color-muted-2);
+    flex-shrink:0;
+  }
+  #cursorpos{margin-left:auto;}
+
+  /* ---------- CodeMirror, themed as Nocturne ---------- */
+  .CodeMirror{
+    height:100% !important;
+    font-family:var(--font-mono) !important;
+    font-size:14px;
+    line-height:1.65;
+    background:var(--color-bg) !important;
+    color:var(--color-text) !important;
+    padding-top:11.2px;
+  }
+  .CodeMirror-gutters{
+    background:var(--color-bg) !important;
+    border-right:none !important;
+  }
+  .CodeMirror-linenumber{color:var(--color-gutter) !important; padding:0 11.2px 0 16.8px;}
+  .CodeMirror-lines{padding-left:5.6px;}
+  .CodeMirror-cursor{border-left:2px solid var(--color-accent-400) !important;}
+  .cm-fixing .CodeMirror-cursor{border-left:2px solid var(--color-accent) !important;}
+  .CodeMirror-selected{background:var(--color-accent-900) !important;}
+  .CodeMirror-focused .CodeMirror-selected{background:var(--color-accent-900) !important;}
+  .CodeMirror-activeline-background{background:rgba(43,39,65,.35) !important;}
+
+  .cm-s-nocturne .cm-keyword{color:var(--syn-keyword);}
+  .cm-s-nocturne .cm-builtin{color:var(--syn-fn);}
+  .cm-s-nocturne .cm-def{color:var(--syn-fn);}
+  .cm-s-nocturne .cm-property{color:var(--syn-fn);}
+  .cm-s-nocturne .cm-variable{color:var(--color-text);}
+  .cm-s-nocturne .cm-variable-2{color:var(--syn-module);}
+  .cm-s-nocturne .cm-variable-3{color:var(--syn-module);}
+  .cm-s-nocturne .cm-string,
+  .cm-s-nocturne .cm-string-2{color:var(--syn-string);}
+  .cm-s-nocturne .cm-number{color:var(--syn-number);}
+  .cm-s-nocturne .cm-operator{color:var(--color-text-3);}
+  .cm-s-nocturne .cm-comment{color:var(--color-muted-2); font-style:italic;}
+  .cm-s-nocturne .cm-meta{color:var(--color-muted);}
+  .cm-s-nocturne .cm-error{color:var(--color-err);}
+  .cm-s-nocturne .cm-punctuation{color:var(--color-text-3);}
+
+  .CodeMirror-hints{
+    background:var(--color-surface) !important;
+    border:1px solid var(--color-line-strong) !important;
+    border-radius:var(--radius) !important;
+    box-shadow:var(--shadow-lg) !important;
+    font-family:var(--font-mono) !important;
+    font-size:13px !important;
+    padding:4px !important;
+    z-index:50 !important;
+  }
+  .CodeMirror-hint{padding:5px 12px !important; color:var(--color-text-2) !important; border-radius:5px !important;}
+  li.CodeMirror-hint-active{background:var(--color-accent-900) !important; color:var(--color-accent-200) !important;}
+
+  /* ---------- right pane ---------- */
+  #right-pane{
+    flex:1 1 42%;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    background:var(--color-bg);
+  }
+  #tabs{
+    display:flex;
+    align-items:center;
+    gap:8.4px;
+    padding:11.2px 16.8px;
+    flex-shrink:0;
+  }
+  .seg{display:flex; padding:2.8px; background:var(--color-surface); border-radius:var(--radius); gap:2.8px;}
+  .seg-opt{
+    display:flex;
+    align-items:center;
+    gap:5.6px;
+    padding:5px 14px;
+    border:none;
+    border-radius:6px;
+    background:transparent;
+    color:var(--color-muted);
+    font-size:12.5px;
+    font-weight:500;
+    cursor:pointer;
     transition:color .15s, background .15s;
   }
-  .tabbtn:hover{color:var(--ink);}
-  .tabbtn.active{color:var(--ink); background:var(--panel-2);}
+  .seg-opt .ph, .seg-opt .ph-fill{font-size:14px;}
+  .seg-opt:hover{color:var(--color-text);}
+  .seg-opt.active{background:var(--color-accent-900); color:var(--color-text);}
+
+  #clearBtn{margin-left:auto; width:28px; height:28px; color:var(--color-muted-2);}
 
   #console-wrap{
     flex:1;
     min-height:0;
-    background:var(--panel-2);
+    margin:0 16.8px 16.8px;
+    background:var(--color-surface);
+    border-radius:var(--radius);
+    box-shadow:0 0 0 1px var(--color-line);
     display:flex;
     flex-direction:column;
+    overflow:hidden;
   }
   #console{
     flex:1;
     overflow-y:auto;
-    padding:16px 18px;
-    font-family:'JetBrains Mono',monospace;
-    font-size:13.5px;
-    line-height:1.6;
+    padding:16.8px;
+    font-family:var(--font-mono);
+    font-size:13px;
+    line-height:1.7;
+    display:flex;
+    flex-direction:column;
+    gap:8.4px;
     white-space:pre-wrap;
     word-break:break-word;
   }
-  .line-out{color:var(--ink);}
-  .line-err{color:var(--err);}
-  .line-sys{color:var(--ink-dim); font-style:italic;}
+  #console > div{flex-shrink:0;}
+  .line-out{color:var(--color-text);}
+  .line-err{color:var(--color-err);}
+  .line-sys{color:var(--color-muted-2);}
+  .line-ok{color:var(--color-accent-400);}
+  .line-sys, .line-ok, .line-err.has-icon{display:flex; gap:8.4px; align-items:flex-start;}
+  .line-sys .ph, .line-ok .ph, .line-err .ph{font-size:14px; line-height:1.7;}
+  .line-sys span, .line-ok span, .line-err span{white-space:pre-wrap; min-width:0;}
+
   .ai-block{
-    margin:12px 0;
-    padding:12px 14px;
-    border-left:2px solid var(--violet);
-    background:#1c1830;
-    color:#dcd7ff;
-    border-radius:0 8px 8px 0;
-    font-family:'Space Grotesk',sans-serif;
-    font-size:13.5px;
+    margin-top:5.6px;
+    padding:11.2px 14px;
+    border-left:2px solid var(--color-accent);
+    background:var(--color-accent-900);
+    border-radius:0 var(--radius) var(--radius) 0;
+    font-family:var(--font-body);
+    font-size:13px;
     line-height:1.55;
+    color:var(--color-accent-300);
+    white-space:normal;
   }
+  .ai-kicker{
+    display:flex;
+    align-items:center;
+    gap:5.6px;
+    font-size:11px;
+    letter-spacing:.06em;
+    color:var(--color-accent-kicker);
+    margin-bottom:5.6px;
+  }
+  .ai-kicker .ph{font-size:12px;}
+
+  /* ---------- graphics ---------- */
   #graphics-wrap{
     flex:1;
     min-height:0;
     display:none;
-    background:radial-gradient(ellipse at 50% 40%, #241d30, var(--panel-2));
+    position:relative;
+    background:var(--color-surface-2);
     align-items:center;
     justify-content:center;
     overflow:hidden;
-    padding:20px;
+    padding:14px;
   }
   #graphics-wrap.active{display:flex;}
   #console-wrap.hidden{display:none;}
   canvas#tcanvas{
     background:var(--paper);
-    border-radius:10px;
-    box-shadow:0 12px 40px rgba(0,0,0,.45), 0 0 0 1px rgba(0,0,0,.15);
+    border-radius:var(--radius);
+    box-shadow:0 0 0 1px var(--color-line), var(--shadow-md);
     touch-action:none;
     cursor:grab;
   }
   canvas#tcanvas:active{cursor:grabbing;}
-
-  #graphics-wrap{position:relative;}
   #zoom-controls{
     position:absolute;
-    right:28px;
-    bottom:28px;
+    right:26px;
+    bottom:26px;
     display:flex;
     flex-direction:column;
     align-items:center;
-    gap:6px;
-    background:rgba(30,23,41,.85);
-    border:1px solid var(--line);
-    border-radius:12px;
-    padding:8px 6px;
-    -webkit-backdrop-filter:blur(6px);
+    gap:2.8px;
+    background:rgba(35,37,50,.9);
+    border:1px solid var(--color-line-strong);
+    border-radius:var(--radius);
+    padding:5.6px 4px;
     backdrop-filter:blur(6px);
-    box-shadow:0 6px 20px rgba(0,0,0,.35);
-    z-index:5;
+    -webkit-backdrop-filter:blur(6px);
   }
   #zoom-controls button{
-    width:34px;
-    height:34px;
-    border-radius:8px;
-    border:1px solid var(--line);
-    background:#241b30;
-    color:var(--ink);
-    font-size:17px;
-    font-weight:600;
-    line-height:1;
+    width:32px; height:32px;
+    display:flex; align-items:center; justify-content:center;
+    border:none; border-radius:6px;
+    background:transparent;
+    color:var(--color-text-2);
+    font-size:16px;
     cursor:pointer;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    transition:border-color .15s, background .15s, transform .1s;
-    font-family:'Space Grotesk',sans-serif;
   }
-  #zoom-controls button:hover{border-color:var(--coral); background:#2c2138;}
-  #zoom-controls button:active{transform:translateY(1px);}
-  #zoom-controls #zoomReset{font-size:15px;}
-  #zoomLevel{
-    font-family:'JetBrains Mono',monospace;
-    font-size:11px;
-    color:var(--ink-dim);
-    padding:2px 0;
-    user-select:none;
-  }
-
-  ::-webkit-scrollbar{width:10px;}
-  ::-webkit-scrollbar-thumb{background:var(--line); border-radius:5px;}
-
-  .CodeMirror-hints{
-    font-family:'JetBrains Mono',monospace !important;
-    font-size:13px;
-    background:#241b30 !important;
-    border:1px solid var(--line) !important;
-    color:var(--ink) !important;
-    box-shadow:0 8px 24px rgba(0,0,0,.4) !important;
-  }
-  .CodeMirror-hint{padding:5px 12px !important;}
-  li.CodeMirror-hint-active{background:var(--coral) !important; color:#2a0f02 !important;}
+  #zoom-controls button:hover{background:var(--color-accent-900);}
+  #zoomReset{color:var(--color-muted-2) !important; font-size:15px !important;}
+  #zoomLevel{font-family:var(--font-mono); font-size:10px; color:var(--color-muted-2);}
 
   /* ---------- key bar + mobile nav (hidden on desktop) ---------- */
   #keybar{display:none;}
   #mobilenav{display:none;}
   .kb{
     flex:0 0 auto;
-    min-width:38px;
-    height:38px;
-    background:#241b30;
-    border:1px solid var(--line);
-    border-radius:8px;
-    color:var(--ink);
-    font-family:'JetBrains Mono',monospace;
+    min-width:44px;
+    height:44px;
+    background:var(--color-surface);
+    border:1px solid var(--color-line-strong);
+    border-radius:var(--radius);
+    color:var(--color-text);
+    font-family:var(--font-mono);
     font-size:16px;
     cursor:pointer;
   }
-  .kb:active{background:var(--coral-dim);}
+  .kb:active{background:var(--color-accent-900); border-color:var(--color-accent-700);}
   .navbtn{
     flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:2.8px;
     background:transparent;
     border:none;
-    color:var(--ink-dim);
-    font-family:'Space Grotesk',sans-serif;
-    font-size:13px;
+    color:var(--color-muted);
+    font-size:11px;
     font-weight:500;
-    padding:11px 4px;
-    border-radius:9px;
+    padding:6px 4px;
+    border-radius:var(--radius);
     cursor:pointer;
   }
-  .navbtn.active{color:var(--ink); background:#241b30;}
+  .navbtn .ph, .navbtn .ph-fill{font-size:20px;}
+  .navbtn.active{background:var(--color-accent-900); color:var(--color-accent-300);}
 
   /* ---------- iPhone (both orientations) and narrow iPad Split View ----------
      Width alone is not enough: an iPhone in landscape is ~850pt wide but only
      ~390pt tall, where a side-by-side split leaves no usable editor. ---------- */
   @media (max-width:700px), (max-height:500px){
-    #toolbar{padding:9px 12px; padding-top:calc(9px + env(safe-area-inset-top)); gap:6px;}
-    #logo{display:none;}
-    button.tool{padding:8px 11px; font-size:13px; flex:1 1 auto; justify-content:center;}
-    button#keyBtn{flex:0 0 auto;}
-    .sep{display:none;}
+    #toolbar{padding:8.4px 14px; padding-top:calc(8.4px + env(safe-area-inset-top)); gap:8.4px;}
+    #brand{display:none;}
+    #filechip{border-left:none; padding-left:0;}
+    #openBtn, #saveBtn, #keyBtn{display:none;}
+    #moreBtn{display:flex;}
+    #moreBtn, #aicheck{width:32px; height:32px; padding:0; justify-content:center;}
+    #aicheck .lbl{display:none;}
+    #filechip{flex:1 1 auto; min-width:40px;}
+    .btn-run{padding:6px 14px; flex:0 0 auto;}
 
-    #editor-pane,#right-pane{width:100%; border-right:none;}
+    #editor-pane,#right-pane{width:100%; flex:1 1 auto; border-right:none;}
     #tabs{display:none;}
+    #statusbar{display:none;}
+    #console-wrap{margin:0; border-radius:0; box-shadow:none; background:var(--color-bg);}
     body:not(.view-code) #editor-pane{display:none;}
     body.view-code #right-pane{display:none;}
 
     /* 16px is the threshold below which iOS zooms the page on focus */
     .CodeMirror{font-size:16px;}
     #console{font-size:14px; padding:14px;}
-    #graphics-wrap{padding:10px;}
+    #graphics-wrap{padding:14px;}
+    #zoom-controls{right:26px; bottom:26px;}
 
     #keybar{
       display:none;
-      gap:6px;
-      padding:7px 10px;
-      background:var(--panel);
-      border-top:1px solid var(--line);
+      gap:5.6px;
+      padding:8.4px 11.2px;
+      background:var(--color-bg);
+      border-top:1px solid var(--color-line);
       overflow-x:auto;
       -webkit-overflow-scrolling:touch;
       scrollbar-width:none;
@@ -356,23 +512,24 @@
 
     #mobilenav{
       display:flex;
-      gap:4px;
-      padding:6px 10px;
-      padding-bottom:calc(6px + env(safe-area-inset-bottom));
-      padding-left:calc(10px + env(safe-area-inset-left));
-      padding-right:calc(10px + env(safe-area-inset-right));
-      background:linear-gradient(0deg,#150f1d,#1c1526);
-      border-top:1px solid var(--line);
+      gap:5.6px;
+      padding:8.4px 11.2px;
+      padding-bottom:calc(8.4px + env(safe-area-inset-bottom));
+      padding-left:calc(11.2px + env(safe-area-inset-left));
+      padding-right:calc(11.2px + env(safe-area-inset-right));
+      background:var(--color-bg);
+      border-top:1px solid var(--color-line);
       flex-shrink:0;
     }
   }
 
   @media (max-height:500px){
     #toolbar{padding:6px 10px; padding-top:calc(6px + env(safe-area-inset-top)); gap:5px; flex-wrap:nowrap; overflow-x:auto;}
-    button.tool{padding:6px 10px; font-size:12.5px; flex:0 0 auto;}
-    .kb{height:32px; min-width:34px; font-size:15px;}
+    .btn{padding:6px 10px; font-size:12.5px; flex:0 0 auto;}
+    .kb{height:36px; min-width:38px; font-size:15px;}
     #keybar{padding:5px 10px;}
-    .navbtn{padding:7px 4px; font-size:12.5px;}
+    .navbtn{flex-direction:row; gap:5.6px; padding:6px 4px; font-size:12.5px;}
+    .navbtn .ph, .navbtn .ph-fill{font-size:16px;}
   }
 
   /* ---------- iPad portrait & landscape keep the split view ---------- */
@@ -387,32 +544,59 @@
 </head>
 <body>
 
-<div id="toolbar">
-  <div id="logo"><span class="dot"></span>Pocket<span>Python</span></div>
+<header id="toolbar">
+  <div id="brand">
+    <svg width="22" height="22" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="118" fill="#2b2741"></rect><polyline points="152,152 152,256 256,256 256,360 360,360" fill="none" stroke="#b5abfc" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"></polyline><circle cx="360" cy="336" r="11" fill="#2b2741"></circle></svg>
+    <span class="brand-name">Pocket Python</span>
+  </div>
+
+  <div id="filechip">
+    <i class="ph ph-file-py" aria-hidden="true"></i>
+    <span id="filename">program.py</span>
+    <span id="dirtydot" title="Есть несохранённые изменения" hidden></span>
+  </div>
+
   <input type="file" id="fileInput" accept=".py,text/x-python,text/plain" style="display:none">
-  <button class="tool" id="openBtn">📂 Открыть</button>
-  <button class="tool" id="saveBtn">⬇ Сохранить</button>
-  <div class="sep"></div>
-  <button class="tool" id="aicheck">✦ Проверить с ИИ</button>
-  <button class="tool" id="keyBtn" title="API-ключ Anthropic">🔑</button>
-  <button class="tool" id="run">▶ Запустить</button>
+  <button class="btn" id="openBtn"><i class="ph ph-folder-open" aria-hidden="true"></i>Открыть</button>
+  <button class="btn" id="saveBtn"><i class="ph ph-download-simple" aria-hidden="true"></i>Сохранить</button>
+  <button class="btn btn-icon" id="keyBtn" title="API-ключ OpenRouter" aria-label="API-ключ OpenRouter"><i class="ph ph-key" aria-hidden="true"></i></button>
+  <button class="btn btn-ai" id="aicheck"><i class="ph ph-sparkle" aria-hidden="true"></i><span class="lbl">Проверить с ИИ</span></button>
+  <button class="btn btn-run" id="run"><i class="ph-fill ph-play" aria-hidden="true"></i>Запустить</button>
+  <!-- Открыть/Сохранить collapse into this on phones, per the redesign. -->
+  <button class="btn btn-icon" id="moreBtn" title="Ещё" aria-label="Ещё" aria-expanded="false"><i class="ph ph-dots-three" aria-hidden="true"></i></button>
+</header>
+
+<div id="moremenu" hidden>
+  <button data-act="open"><i class="ph ph-folder-open" aria-hidden="true"></i>Открыть</button>
+  <button data-act="save"><i class="ph ph-download-simple" aria-hidden="true"></i>Сохранить</button>
+  <button data-act="key"><i class="ph ph-key" aria-hidden="true"></i>API-ключ</button>
 </div>
 
 <div id="main">
-  <div id="editor-pane"><textarea id="editor"></textarea></div>
+  <div id="editor-pane">
+    <div id="editor-host"><textarea id="editor"></textarea></div>
+    <div id="statusbar">
+      <span id="runtimeinfo">Python 3.12 · Pyodide</span>
+      <span id="cursorpos">Стр 1, Кол 1</span>
+      <span>UTF-8</span>
+    </div>
+  </div>
   <div id="right-pane">
     <div id="tabs">
-      <button class="tabbtn active" id="tab-console">Консоль</button>
-      <button class="tabbtn" id="tab-graphics">Графика</button>
+      <div class="seg" role="tablist">
+        <button class="seg-opt active" id="tab-console"><i class="ph ph-terminal-window" aria-hidden="true"></i>Консоль</button>
+        <button class="seg-opt" id="tab-graphics"><i class="ph ph-compass-tool" aria-hidden="true"></i>Графика</button>
+      </div>
+      <button class="btn btn-icon" id="clearBtn" title="Очистить консоль" aria-label="Очистить консоль"><i class="ph ph-eraser" aria-hidden="true"></i></button>
     </div>
     <div id="console-wrap"><div id="console"></div></div>
     <div id="graphics-wrap">
       <canvas id="tcanvas" width="600" height="600"></canvas>
       <div id="zoom-controls">
-        <button id="zoomIn" title="Приблизить">+</button>
+        <button id="zoomIn" title="Приблизить" aria-label="Приблизить"><i class="ph ph-plus" aria-hidden="true"></i></button>
         <div id="zoomLevel">100%</div>
-        <button id="zoomOut" title="Отдалить">−</button>
-        <button id="zoomReset" title="Сбросить масштаб">⤾</button>
+        <button id="zoomOut" title="Отдалить" aria-label="Отдалить"><i class="ph ph-minus" aria-hidden="true"></i></button>
+        <button id="zoomReset" title="Сбросить масштаб" aria-label="Сбросить масштаб"><i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i></button>
       </div>
     </div>
   </div>
@@ -439,9 +623,9 @@
 </div>
 
 <nav id="mobilenav">
-  <button class="navbtn active" data-view="code">Код</button>
-  <button class="navbtn" data-view="console">Консоль</button>
-  <button class="navbtn" data-view="graphics">Графика</button>
+  <button class="navbtn active" data-view="code"><i class="ph ph-code" aria-hidden="true"></i>Код</button>
+  <button class="navbtn" data-view="console"><i class="ph ph-terminal-window" aria-hidden="true"></i>Консоль</button>
+  <button class="navbtn" data-view="graphics"><i class="ph ph-compass-tool" aria-hidden="true"></i>Графика</button>
 </nav>
 
 <script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
@@ -481,7 +665,7 @@ editorTextarea.setAttribute('spellcheck','false');
 
 const cm = CodeMirror.fromTextArea(editorTextarea,{
   mode:'python',
-  theme:'dracula',
+  theme:'nocturne',          // themed in this file's <style>, not a CDN theme
   lineNumbers:true,
   indentUnit:4,
   tabSize:4,
@@ -502,12 +686,27 @@ cm.setValue(
 `import turtle
 
 t = turtle.Turtle()
-t.color("#ff7a45")
+t.color("#9184d9")
 for i in range(4):
     t.forward(120)
     t.right(90)
 turtle.done()
 `);
+// ---------- status chrome: filename, unsaved marker, caret position ----------
+const filenameEl = document.getElementById('filename');
+const dirtyDot = document.getElementById('dirtydot');
+const cursorPosEl = document.getElementById('cursorpos');
+let dirty = false;
+
+function setFileName(name){ currentFileName = name; filenameEl.textContent = name; }
+function setDirty(v){ dirty = v; dirtyDot.hidden = !v; }
+
+cm.on('cursorActivity', function(){
+  const c = cm.getCursor();
+  cursorPosEl.textContent = 'Стр ' + (c.line + 1) + ', Кол ' + (c.ch + 1);
+});
+cm.on('change', function(){ if(!dirty) setDirty(true); });
+
 cm.on('inputRead', function(cm, change){
   if(change.text[0] && /[\w.]/.test(change.text[0])){
     CodeMirror.showHint(cm, customHint, {completeSingle:false});
@@ -524,11 +723,12 @@ openBtn.onclick = () => fileInput.click();
 fileInput.onchange = () => {
   const file = fileInput.files[0];
   if(!file) return;
-  currentFileName = file.name;
+  setFileName(file.name);
   const reader = new FileReader();
   reader.onload = () => {
     cm.setValue(reader.result);
-    logLine('Файл «'+file.name+'» загружен.','line-sys');
+    setDirty(false);
+    logLine('Файл «'+file.name+'» загружен.','line-sys','ph ph-file-py');
   };
   reader.onerror = () => logLine('Не удалось прочитать файл.','line-err');
   reader.readAsText(file);
@@ -545,7 +745,31 @@ saveBtn.onclick = () => {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+  setDirty(false);
 };
+
+// ---------- overflow menu (phones: Открыть/Сохранить live here) ----------
+const moreBtn = document.getElementById('moreBtn');
+const moreMenu = document.getElementById('moremenu');
+function closeMore(){ moreMenu.hidden = true; moreBtn.setAttribute('aria-expanded','false'); }
+moreBtn.onclick = (e) => {
+  e.stopPropagation();
+  const open = moreMenu.hidden;
+  moreMenu.hidden = !open;
+  moreBtn.setAttribute('aria-expanded', String(open));
+};
+moreMenu.onclick = (e) => {
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  closeMore();
+  if(btn.dataset.act === 'open') openBtn.click();
+  else if(btn.dataset.act === 'save') saveBtn.click();
+  else if(btn.dataset.act === 'key') askApiKey();
+};
+document.addEventListener('click', (e) => {
+  if(!moreMenu.hidden && !moreMenu.contains(e.target)) closeMore();
+});
+document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeMore(); });
 
 // ---------- tabs ----------
 const tabConsole = document.getElementById('tab-console');
@@ -556,6 +780,7 @@ function showTab(which){
   // Reveal the pane first: on phones #right-pane is display:none while the code
   // view is up, and measuring a hidden element collapses the canvas to its floor.
   syncMobileNav(which);
+  closeMore();
   if(which==='console'){
     tabConsole.classList.add('active'); tabGraphics.classList.remove('active');
     consoleWrap.classList.remove('hidden'); graphicsWrap.classList.remove('active');
@@ -570,21 +795,36 @@ tabGraphics.onclick=()=>showTab('graphics');
 
 // ---------- console ----------
 const consoleEl = document.getElementById('console');
-function logLine(text, cls){
+// `icon` is a Phosphor class; program output passes none so it stays a plain
+// pre-wrapped block rather than a flex row.
+function logLine(text, cls, icon){
   const div = document.createElement('div');
   div.className = cls;
-  div.textContent = text;
+  if(icon){
+    const ic = document.createElement('i');
+    ic.className = icon;
+    ic.setAttribute('aria-hidden','true');
+    div.appendChild(ic);
+    const span = document.createElement('span');
+    span.textContent = text;
+    div.appendChild(span);
+    if(cls === 'line-err') div.classList.add('has-icon');
+  } else {
+    div.textContent = text;
+  }
   consoleEl.appendChild(div);
   consoleEl.scrollTop = consoleEl.scrollHeight;
+  return div;
 }
 function clearConsole(){ consoleEl.innerHTML=''; }
+document.getElementById('clearBtn').onclick = () => { clearConsole(); cm.focus(); };
 
 // ---------- turtle canvas engine (with pan & zoom) ----------
 const canvas = document.getElementById('tcanvas');
 const ctx = canvas.getContext('2d');
 const zoomLevelEl = document.getElementById('zoomLevel');
 
-let bg = '#f6efdf';
+let bg = '#e4e7f5';                 // --paper
 let drawOps = [];              // recorded turtle-space draw operations, replayed on zoom/pan/resize
 let scaleV = 1, offX = 0, offY = 0;
 const MIN_SCALE = 0.15, MAX_SCALE = 10;
@@ -933,7 +1173,8 @@ async function getPyodide(){
       if(typeof loadPyodide !== 'function'){
         throw new Error('Не загрузился движок Python (pyodide.js). Проверьте интернет и обновите страницу.');
       }
-      logLine('Загружаю среду выполнения Python…','line-sys');
+      const loading = logLine('Загружаю среду выполнения Python…','line-sys','ph ph-circle-notch');
+      const t0 = performance.now();
       const py = await loadPyodide({ indexURL: PYODIDE_INDEX_URL });
       // `js` must be imported explicitly — it is not a builtin inside Pyodide.
       await py.runPythonAsync(`
@@ -962,15 +1203,35 @@ builtins.input = _input
       py.FS.mkdirTree('/turtlemod');
       py.FS.writeFile('/turtlemod/turtle.py', TURTLE_SHIM);
       py.runPython(`import sys; sys.path.insert(0,'/turtlemod')`);
-      logLine('Готово. Можно запускать код.','line-sys');
+      const secs = ((performance.now() - t0) / 1000).toFixed(1);
+      loading.querySelector('span').textContent = 'Среда Python загружена за ' + secs + ' с';
       return py;
     })();
   }
   return pyodideReady;
 }
+// Python emits one write() per fragment — print(a, b) sends "a", " ", "b", "\n"
+// separately. The console lays its children out as spaced rows, so fragments
+// must be buffered and flushed per newline or one print becomes four rows.
+const pyBuf = {out:'', err:''};
 window.pyWrite = function(text, kind){
-  logLine(text.replace(/\n$/,''), kind==='err' ? 'line-err' : 'line-out');
+  const k = kind === 'err' ? 'err' : 'out';
+  pyBuf[k] += text;
+  let i;
+  while((i = pyBuf[k].indexOf('\n')) !== -1){
+    logLine(pyBuf[k].slice(0, i), k === 'err' ? 'line-err' : 'line-out');
+    pyBuf[k] = pyBuf[k].slice(i + 1);
+  }
 };
+// A program can end without a trailing newline; nothing is lost.
+function flushPyOut(){
+  for(const k of ['out','err']){
+    if(pyBuf[k]){
+      logLine(pyBuf[k], k === 'err' ? 'line-err' : 'line-out');
+      pyBuf[k] = '';
+    }
+  }
+}
 window.pyInput = function(promptText){
   // Some embedded webviews block prompt(); returning null makes Python raise a
   // clean EOFError instead of an unhandled JS exception.
@@ -989,6 +1250,7 @@ let lastError = '';
 runBtn.onclick = async function(){
   runBtn.disabled = true;
   clearConsole();
+  pyBuf.out = ''; pyBuf.err = '';
   lastError = '';
   try{
     const py = await getPyodide();
@@ -1000,16 +1262,20 @@ runBtn.onclick = async function(){
       if(window.turtleClear) window.turtleClear();
       showTab('console');
     }
+    const started = performance.now();
     try{
       await py.runPythonAsync(code);
-      logLine('— выполнено —','line-sys');
+      flushPyOut();
+      const secs = ((performance.now() - started) / 1000).toFixed(2);
+      logLine('Программа завершена · ' + secs + ' с', 'line-ok', 'ph ph-check');
     }catch(e){
+      flushPyOut();
       lastError = cleanTraceback(e.message || String(e));
-      logLine(lastError, 'line-err');
+      logLine(lastError, 'line-err', 'ph ph-warning-circle');
       showTab('console');
     }
   }catch(e){
-    logLine('Ошибка среды: '+e.message,'line-err');
+    logLine('Ошибка среды: '+e.message,'line-err','ph ph-warning-circle');
   }
   runBtn.disabled = false;
 };
@@ -1293,7 +1559,12 @@ ${lastError ? "Последняя ошибка при запуске:\n" + lastE
 
     const div = document.createElement('div');
     div.className = 'ai-block';
-    div.textContent = '✦ ИИ: ' + (parsed.comment || '');
+    const kicker = document.createElement('div');
+    kicker.className = 'ai-kicker';
+    kicker.innerHTML = '<i class="ph ph-sparkle" aria-hidden="true"></i>';
+    kicker.appendChild(document.createTextNode('ПРОВЕРКА ИИ'));
+    div.appendChild(kicker);
+    div.appendChild(document.createTextNode(parsed.comment || ''));
     consoleEl.appendChild(div);
     consoleEl.scrollTop = consoleEl.scrollHeight;
 
@@ -1324,20 +1595,29 @@ function cleanTraceback(msg){
 const mobileNav = document.getElementById('mobilenav');
 const keybar = document.getElementById('keybar');
 
-function syncMobileNav(which){
-  const view = which === 'graphics' ? 'graphics' : 'console';
-  document.body.classList.remove('view-code');
+// The active tab shows the filled Phosphor glyph; that is a different font
+// family, so it has to be a class swap rather than CSS.
+function paintNav(view){
   mobileNav.querySelectorAll('.navbtn').forEach(b => {
-    b.classList.toggle('active', b.dataset.view === view);
+    const on = b.dataset.view === view;
+    b.classList.toggle('active', on);
+    const ic = b.querySelector('i');
+    if(ic){
+      ic.classList.toggle('ph', !on);
+      ic.classList.toggle('ph-fill', on);
+    }
   });
+}
+
+function syncMobileNav(which){
+  document.body.classList.remove('view-code');
+  paintNav(which === 'graphics' ? 'graphics' : 'console');
 }
 
 function setView(view){
   if(view === 'code'){
     document.body.classList.add('view-code');
-    mobileNav.querySelectorAll('.navbtn').forEach(b => {
-      b.classList.toggle('active', b.dataset.view === 'code');
-    });
+    paintNav('code');
     cm.refresh();
   } else {
     showTab(view === 'graphics' ? 'graphics' : 'console');
@@ -1378,7 +1658,8 @@ window.addEventListener('orientationchange', () => {
 });
 
 // init
-logLine('Нажмите «Запустить», чтобы выполнить код.','line-sys');
+setFileName(currentFileName);
+logLine('Нажмите «Запустить», чтобы выполнить код.','line-sys','ph ph-terminal-window');
 
 // ---------- PWA ----------
 if('serviceWorker' in navigator){
